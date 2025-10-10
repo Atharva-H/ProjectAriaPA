@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+python-dotenv
+sqlalchemy
+jwt
+google-auth
+google-auth-oauthlib
+google-auth-httplib2

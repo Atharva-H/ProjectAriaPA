@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.env
+venv/
+.env.local
+
+# Node / JS
+node_modules/
+dist/
+*.log
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+GoogleCloudProject/
+backend/venv/
+frontend/node_modules/
