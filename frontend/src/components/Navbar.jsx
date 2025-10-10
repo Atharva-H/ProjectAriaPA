@@ -1,44 +1,15 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useEffect, useContext } from "react";
+import { AuthContext } from "../context/AuthContext";
+import { APP_NAME } from "../utils/constants";
+import logo from "../assets/logo.png";
+
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, logout, token } = useContext(AuthContext);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
-
-  const loadUser = async () => {
-    const token = localStorage.getItem("jwt");
-    if (!token) return;
-
-    try {
-      const res = await fetch("http://localhost:8000/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-
-      if (data.refresh && data.token) {
-        localStorage.setItem("jwt", data.token);
-        return loadUser();
-      }
-
-      if (data.name) setUser(data);
-      else localStorage.removeItem("jwt");
-    } catch (err) {
-      console.error("Error loading user:", err);
-      localStorage.removeItem("jwt");
-    }
-  };
-
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("jwt");
-    setUser(null);
-    navigate("/");
-  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -54,20 +25,36 @@ export default function Navbar() {
   return (
     <nav className="bg-white dark:bg-gray-900 shadow-sm py-3 px-6 flex justify-between items-center sticky top-0 z-10 transition-colors">
       {/* Brand */}
-      <Link to="/" className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight">
-        Project Aria.PA
+      <Link
+        to="/"
+        className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight"
+      >
+        {APP_NAME}
       </Link>
 
       {/* Navigation Links */}
       <div className="flex gap-6 text-gray-700 dark:text-gray-300 font-medium">
-        {!user && (
+        {!token && (
           <>
-            <Link to="/" className="hover:text-blue-600 dark:hover:text-blue-400 transition">Home</Link>
-            <Link to="/about" className="hover:text-blue-600 dark:hover:text-blue-400 transition">About</Link>
+            <Link
+              to="/"
+              className="hover:text-blue-600 dark:hover:text-blue-400 transition"
+            >
+              Home
+            </Link>
+            <Link
+              to="/about"
+              className="hover:text-blue-600 dark:hover:text-blue-400 transition"
+            >
+              About
+            </Link>
           </>
         )}
         {user && (
-          <Link to="/dashboard" className="hover:text-blue-600 dark:hover:text-blue-400 transition">
+          <Link
+            to="/dashboard"
+            className="hover:text-blue-600 dark:hover:text-blue-400 transition"
+          >
             Dashboard
           </Link>
         )}
@@ -82,7 +69,7 @@ export default function Navbar() {
               className="flex items-center gap-3 focus:outline-none"
             >
               <span className="text-gray-800 dark:text-gray-200 font-medium">
-                {user.name.split(" ")[0]}
+                {user.name?.split(" ")[0]}
               </span>
               <img
                 src={user.picture}
@@ -95,27 +82,31 @@ export default function Navbar() {
               <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-800 rounded-xl shadow-lg border dark:border-gray-700 p-2 animate-fade-in">
                 <Link
                   to="/account"
-                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Account Details
                 </Link>
                 <Link
                   to="/integration"
-                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Integration
                 </Link>
                 <Link
                   to="/settings"
-                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-2 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Settings
                 </Link>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    logout();
+                    navigate("/");
+                  }}
                   className="w-full text-left px-4 py-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
                   Logout
@@ -124,7 +115,7 @@ export default function Navbar() {
             )}
           </>
         ) : (
-          <>
+          <div className="flex gap-2">
             <Link
               to="/login"
               className="bg-blue-600 text-white px-4 py-1 rounded-lg hover:bg-blue-700 text-sm"
@@ -137,7 +128,7 @@ export default function Navbar() {
             >
               Sign Up
             </Link>
-          </>
+          </div>
         )}
       </div>
     </nav>

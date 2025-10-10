@@ -1,83 +1,38 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { APP_NAME } from "../utils/constants";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const handleEmailLogin = (e) => {
-    e.preventDefault();
-    alert(`Email login not implemented yet.\nEmail: ${email}\nPassword: ${password}`);
-  };
-
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:8000/auth/login";
+    window.location.href = `${import.meta.env.VITE_API_URL}/auth/login`;
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-64px)] bg-gray-50">
-      {/* Left: Email login */}
-      <div className="flex flex-col justify-center items-center w-full md:w-1/2 bg-white border-r">
-        <div className="w-3/4 max-w-sm">
-          <h1 className="text-3xl font-bold text-gray-800 mb-6">
-            Welcome Back 👋
-          </h1>
-          <form onSubmit={handleEmailLogin} className="flex flex-col gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full border border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full border border-gray-300 px-3 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-all mt-2"
-            >
-              Login
-            </button>
-
-            <p className="text-sm text-gray-500 mt-3 text-center">
-              Don’t have an account?{" "}
-              <Link to="/signup" className="text-blue-600 hover:underline">
-                Create one
-              </Link>
-            </p>
-          </form>
-        </div>
+    <div className="flex flex-col md:flex-row min-h-screen w-full bg-gray-50">
+      {/* Left Section */}
+      <div className="flex flex-col justify-center items-center w-full md:w-1/2 bg-white px-8 md:px-16 py-12 border-r border-gray-200">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-6 text-center md:text-left">
+          Welcome Back 👋
+        </h1>
+        <p className="text-gray-600 max-w-md text-center md:text-left mb-8 text-lg">
+          Log in to your <strong>{APP_NAME}</strong> dashboard — your AI-powered
+          business assistant for MSMEs.
+        </p>
+        <button
+          onClick={handleGoogleLogin}
+          className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 text-lg transition-all"
+        >
+          Continue with Google
+        </button>
       </div>
 
-      {/* Right: Google Sign-In */}
-      <div className="flex flex-col justify-center items-center w-full md:w-1/2 bg-gradient-to-br from-blue-600 to-indigo-700 text-white">
-        <div className="text-center max-w-sm">
-          <h2 className="text-3xl font-semibold mb-4">Login with Google</h2>
-          <p className="mb-6 text-blue-100">
-            Securely sign in with your Google account to access your dashboard.
-          </p>
-          <button
-            onClick={handleGoogleLogin}
-            className="bg-white text-blue-600 font-semibold px-6 py-2 rounded-lg shadow hover:bg-gray-100 transition-all"
-          >
-            Continue with Google
-          </button>
-        </div>
+      {/* Right Section */}
+      <div className="flex flex-col justify-center items-center w-full md:w-1/2 bg-gradient-to-br from-indigo-600 to-blue-700 text-white px-8 md:px-16 py-12">
+        <h2 className="text-3xl font-semibold mb-4 text-center md:text-left">
+          Smarter. Faster. Organized.
+        </h2>
+        <p className="text-blue-100 max-w-md text-center md:text-left leading-relaxed text-lg">
+          Let {APP_NAME} handle your reminders, WhatsApp updates, and insights —
+          while you focus on growth and strategy.
+        </p>
       </div>
     </div>
   );

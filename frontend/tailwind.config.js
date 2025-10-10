@@ -6,8 +6,13 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+  extend: {
+    screens: {
+      '2xl': '1536px', // extra-large viewports
+    },
   },
+},
+
   plugins: [],
 }
 
