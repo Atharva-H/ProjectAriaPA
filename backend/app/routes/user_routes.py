@@ -1,10 +1,15 @@
+# app/routes/user_routes.py
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import logging
+
 from app.db import get_db, crud
 from app.core.security import decode_jwt
+from app.core.logging_config import user_context
 
 router = APIRouter(prefix="/users", tags=["Users"])
+logger = logging.getLogger("ProjectAria.Users")
 
 
 # -------------------------------
@@ -16,24 +21,43 @@ class UserUpdateRequest(BaseModel):
 
 
 # -------------------------------
-# 🧩 Endpoints
+# 🔑 Helper to get authenticated user
 # -------------------------------
-
-@router.get("/me")
-async def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-    """Return the current logged-in user's details."""
+def get_authenticated_user(authorization: str, db: Session):
+    """Decode token, validate user, and attach context."""
     if not authorization:
-        raise HTTPException(401, "Missing Authorization header")
+        logger.warning("Missing Authorization header")
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
 
     token = authorization.replace("Bearer ", "")
     data = decode_jwt(token)
     if not data:
-        raise HTTPException(401, "Invalid or expired token")
+        logger.warning("Invalid or expired JWT token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     email = data.get("sub")
     user = crud.get_user_by_email(db, email)
     if not user:
-        raise HTTPException(404, "User not found")
+        logger.error(f"User not found in DB for email: {email}")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Set logging context for rest of the request
+    user_context.set(email)
+    return user
+
+
+# -------------------------------
+# 🧩 Endpoints
+# -------------------------------
+
+@router.get("/me")
+async def get_current_user(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """Return the current logged-in user's details."""
+    user = get_authenticated_user(authorization, db)
+    logger.info(f"Fetched user profile: {user.email}")
 
     return {
         "id": user.id,
@@ -52,33 +76,35 @@ async def update_user(
     db: Session = Depends(get_db)
 ):
     """Update the logged-in user's name or picture."""
-    if not authorization:
-        raise HTTPException(401, "Missing Authorization header")
+    user = get_authenticated_user(authorization, db)
 
-    token = authorization.replace("Bearer ", "")
-    data = decode_jwt(token)
-    if not data:
-        raise HTTPException(401, "Invalid or expired token")
-
-    email = data.get("sub")
-    user = crud.get_user_by_email(db, email)
-    if not user:
-        raise HTTPException(404, "User not found")
-
-    if request.name:
+    updated_fields = []
+    if request.name and request.name != user.name:
         user.name = request.name
-    if request.picture:
+        updated_fields.append("name")
+    if request.picture and request.picture != user.picture:
         user.picture = request.picture
+        updated_fields.append("picture")
 
-    db.commit()
-    db.refresh(user)
-    return {"message": "User updated successfully", "user": {"name": user.name, "picture": user.picture}}
+    if updated_fields:
+        db.commit()
+        db.refresh(user)
+        logger.info(f"Updated user fields {updated_fields} for {user.email}")
+    else:
+        logger.info(f"No changes made for {user.email}")
+
+    return {
+        "message": "User updated successfully",
+        "user": {"name": user.name, "picture": user.picture},
+    }
 
 
 @router.get("/")
 async def list_users(db: Session = Depends(get_db)):
     """List all users (optional — can be restricted later)."""
     users = crud.get_all_users(db)
+    logger.info(f"Fetched all users (count: {len(users)})")
+
     return [
         {
             "id": u.id,
