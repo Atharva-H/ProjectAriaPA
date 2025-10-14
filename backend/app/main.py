@@ -10,6 +10,8 @@ from app.routes.user_routes import router as user_router
 from app.routes.calendar_routes import router as calendar_router
 
 from app.core.logging_config import setup_logging, user_context  # 👈 new import
+from app.services.reminder_service import init_scheduler, shutdown_scheduler
+
 
 # -------------------------------------------
 # ⚙️ Initialize logging
@@ -102,3 +104,13 @@ app.include_router(calendar_router)
 def root():
     logger.info("Health check endpoint called")
     return {"message": "✅ ProjectAria.PA backend is running successfully!"}
+
+@app.on_event("startup")
+async def startup_event():
+    # start scheduler
+    init_scheduler()
+    # optionally load pending reminders from DB and reschedule (see below)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    shutdown_scheduler()
