@@ -126,3 +126,27 @@ def get_user_by_whatsapp_no(db: Session, whatsapp_no: str):
     user = db.query(User).filter(User.whatsapp_no == whatsapp_no).first()
     logger.debug(f"Fetched user by WhatsApp no: {whatsapp_no} -> {bool(user)}")
     return user
+
+# app/db/crud.py (append)
+
+from datetime import datetime
+from app.db.models import Reminder
+
+def create_reminder(db: Session, user: User, event_id: str, run_at: datetime, job_id: str = None):
+    reminder = Reminder(user_id=user.id, event_id=event_id, run_at=run_at, job_id=job_id)
+    db.add(reminder)
+    db.commit()
+    db.refresh(reminder)
+    return reminder
+
+def mark_reminder_sent(db: Session, reminder_id: int):
+    r = db.query(Reminder).filter(Reminder.id == reminder_id).first()
+    if not r:
+        return None
+    r.sent = True
+    db.commit()
+    db.refresh(r)
+    return r
+
+def get_pending_reminders(db: Session):
+    return db.query(Reminder).filter(Reminder.sent == False).all()

@@ -16,6 +16,8 @@ from app.services.twilio_service import (
     validate_twilio_signature,
 )
 from app.services.calendar_service import fetch_today_events_for_user
+from app.services.ai_service import interpret_message
+
 
 router = APIRouter(prefix="/whatsapp", tags=["WhatsApp"])
 logger = logging.getLogger("ProjectAria.WhatsApp")
@@ -144,26 +146,138 @@ async def whatsapp_webhook(request: Request, x_twilio_signature: str = Header(No
 
     user_context.set(user.email)
 
-    # --- Simple command recognition ---
-    lower = body.lower()
-    if "calendar" in lower:
-        logger.info(f"User {user.email} requested calendar via WhatsApp")
-        events, message = await fetch_today_events_for_user(user)
-        if events is None:
-            send_whatsapp_message(from_number, f"❌ I couldn’t access your calendar: {message}")
-            logger.error(f"Calendar fetch failed for {user.email}: {message}")
-        elif not events:
-            send_whatsapp_message(from_number, "📭 You have no events in the next 24 hours.")
-            logger.info(f"No events for {user.email}")
-        else:
-            send_whatsapp_message(from_number, "📅 Here are your upcoming events:\n\n" + message)
-            logger.info(f"Sent {len(events)} events to {user.email}")
-        return {"status": "ok"}
+    # -----------------------------
+    # 🧠 AI Interpretation Layer
+    # -----------------------------
+    try:
+        ai_result = await interpret_message(body)
+        intent = ai_result.get("intent", "unknown")
+        params = ai_result.get("params", {})
+        logger.info(f"🤖 AI intent detected: {intent} | params: {params}")
 
-    # Default fallback
-    send_whatsapp_message(from_number, "🤖 Hello! Commands available: 'calendar' → today's events.")
-    logger.info(f"Replied with default help message to {user.email}")
-    return {"status": "ok"}
+        # 1️⃣ Handle calendar-related intents
+        if intent == "get_today_events":
+            events, message = await fetch_today_events_for_user(user)
+            if events is None:
+                send_whatsapp_message(from_number, f"❌ Couldn't access your calendar: {message}")
+            elif not events:
+                send_whatsapp_message(from_number, "📭 You have no events scheduled for today.")
+            else:
+                send_whatsapp_message(from_number, f"📅 Here are today's events:\n\n{message}")
+            logger.info(f"✅ Processed {len(events) if events else 0} events for {user.email}")
+            return {"status": "ok"}
+
+        elif intent == "get_upcoming_events":
+            days = int(params.get("days", 7))
+            # You can reuse your existing calendar_service (add a helper if needed)
+            from app.services.calendar_service import fetch_upcoming_events_for_user
+            events, message = await fetch_upcoming_events_for_user(user, days)
+            if not events:
+                send_whatsapp_message(from_number, f"📭 No events in the next {days} days.")
+            else:
+                send_whatsapp_message(from_number, f"📅 Upcoming {days}-day schedule:\n\n{message}")
+            logger.info(f"✅ Sent upcoming events to {user.email}")
+            return {"status": "ok"}
+        
+        elif intent == "create_calendar_event":
+            from app.services.calendar_service import create_event_for_user
+            from app.services.reminder_service import schedule_reminder
+            from datetime import timedelta, timezone, datetime
+
+            title = params.get("title", "Untitled Event")
+            description = params.get("description", "")
+            datetime_str = params.get("datetime", "")
+            duration = int(params.get("duration_minutes", 60))
+
+            result = await create_event_for_user(user, title, description, datetime_str, duration)
+
+            # --- Handle errors first ---
+            if result.get("status") != "success":
+                send_whatsapp_message(from_number, f"❌ {result.get('error', 'Event creation failed.')}")
+                logger.error(f"Calendar event creation failed for {user.email}: {result.get('error')}")
+                return {"status": "error"}
+
+            # --- Extract event info ---
+            event_start = result.get("start")  # should be datetime object returned by create_event_for_user
+            summary = result.get("summary", title)
+
+            if not event_start:
+                send_whatsapp_message(from_number, f"✅ Event '{summary}' created (no reminder scheduled — missing start time).")
+                logger.warning(f"No start time for event '{summary}' ({user.email})")
+                return {"status": "ok"}
+
+            # --- Schedule reminder 10 minutes before ---
+            run_at_utc = event_start.astimezone(timezone.utc) - timedelta(minutes=10)
+            now_utc = datetime.now(timezone.utc)
+
+            if run_at_utc > now_utc:
+                reminder = schedule_reminder(
+                    db,
+                    user,
+                    result.get("event_id"),
+                    run_at_utc,
+                    f"🔔 Reminder: '{summary}' starts at {event_start.strftime('%I:%M %p')}"
+                )
+                if reminder:
+                    send_whatsapp_message(
+                        from_number,
+                        f"✅ Event '{summary}' created!\n📅 Link: {result['event_link']}\n\nI'll remind you 10 minutes before it starts."
+                    )
+                    logger.info(f"✅ Event '{summary}' created and reminder scheduled for {user.email}")
+                else:
+                    send_whatsapp_message(
+                        from_number,
+                        f"✅ Event '{summary}' created!\n📅 Link: {result['event_link']}\n\n⚠️ Reminder could not be scheduled (missing WhatsApp number)."
+                    )
+                    logger.warning(f"Reminder scheduling failed for {user.email}")
+            else:
+                send_whatsapp_message(
+                    from_number,
+                    f"✅ Event '{summary}' created!\n📅 Link: {result['event_link']}\n\n(Too close to event time for a reminder.)"
+                )
+                logger.info(f"Event '{summary}' created for {user.email} — too soon for reminder scheduling.")
+
+            return {"status": "ok"}
+
+
+
+        elif intent == "get_user_profile":
+            msg = (
+                f"👤 *Profile*\n"
+                f"Name: {user.name}\n"
+                f"Email: {user.email}\n"
+                f"WhatsApp: {user.whatsapp_no or 'Not linked'}\n"
+            )
+            send_whatsapp_message(from_number, msg)
+            return {"status": "ok"}
+
+        elif intent == "get_help":
+            help_msg = (
+                "🤖 *ProjectAria Assistant*\n\n"
+                "You can ask me things like:\n"
+                "- 'What's my day like?'\n"
+                "- 'Show meetings next 3 days'\n"
+                "- 'My profile'\n\n"
+                "I'm always learning new things!"
+            )
+            send_whatsapp_message(from_number, help_msg)
+            return {"status": "ok"}
+
+        else:
+            # Default fallback
+            send_whatsapp_message(
+                from_number,
+                "🤖 Sorry, I didn’t understand that. Try asking:\n"
+                "'What's my day like?' or 'Show next 5 days events'."
+            )
+            logger.info(f"Fallback response for {user.email}: unknown intent")
+            return {"status": "ok"}
+
+    except Exception as e:
+        logger.exception(f"AI interpretation error for {user.email}: {e}")
+        send_whatsapp_message(from_number, "⚠️ Sorry, something went wrong while understanding your request.")
+        return {"status": "error"}
+
 
 
 # -----------------------------
