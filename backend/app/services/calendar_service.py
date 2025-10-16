@@ -413,6 +413,39 @@ async def _fetch_and_format_calendar(user, url: str) -> Tuple[Optional[list], st
         async with httpx.AsyncClient(timeout=15.0) as client:
             res = await client.get(url, headers={"Authorization": f"Bearer {token}"})
 
+        # If 401, try to refresh the token
+        if res.status_code == 401 and user and user.google_calendar_refresh:
+            logger.info(f"Calendar token expired for {user.email}, attempting refresh...")
+            from app.db.crud import refresh_google_access_token
+            from app.db import get_db
+            from sqlalchemy.orm import Session
+            
+            token_data = await refresh_google_access_token(user.google_calendar_refresh)
+            new_access = token_data.get("access_token")
+            if new_access:
+                # Update the user's token in DB
+                db = next(get_db())
+                try:
+                    from datetime import datetime, timedelta
+                    expiry_time = datetime.utcnow() + timedelta(seconds=token_data.get("expires_in", 3600))
+                    from app.db import crud
+                    # Fetch fresh user object from the new session
+                    fresh_user = crud.get_user_by_email(db, user.email)
+                    if fresh_user:
+                        crud.update_calendar_tokens(db, fresh_user, new_access, fresh_user.google_calendar_refresh, expiry_time)
+                        # Update the original user object with new token
+                        user.google_calendar_token = new_access
+                        logger.info(f"✅ Calendar token refreshed for {user.email}")
+                    else:
+                        logger.error(f"Could not find user {user.email} for token update")
+                    db.close()
+                    
+                    # Retry with new token
+                    res = await client.get(url, headers={"Authorization": f"Bearer {new_access}"})
+                except Exception as e:
+                    logger.error(f"Failed to update calendar token: {e}")
+                    db.close()
+
         if res.status_code != 200:
             error_detail = res.json().get("error", {}).get("message", res.text)
             logger.error(f"Google Calendar API error {res.status_code}: {error_detail}")

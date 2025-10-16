@@ -203,3 +203,85 @@ def update_gmail_tokens(db: Session, user: User, access_token: str, refresh_toke
     db.refresh(user)
     logger.info(f"🔗 Saved Gmail tokens for {user.email}")
     return user
+
+
+# ------------------------
+# 📇 Contacts CRUD
+# ------------------------
+from app.db.models import Contact, Task
+
+def create_contact(db: Session, user: User, name: str, email: str = None, phone: str = None, designation: str = None, tags: str = None) -> Contact:
+    contact = Contact(user_id=user.id, name=name, email=email, phone=phone, designation=designation, tags=tags)
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    logger.info(f"👤 Added contact for {user.email}: {name}")
+    return contact
+
+def list_contacts(db: Session, user: User, q: str = None) -> list:
+    query = db.query(Contact).filter(Contact.user_id == user.id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter((Contact.name.ilike(like)) | (Contact.email.ilike(like)) | (Contact.phone.ilike(like)))
+    return query.order_by(Contact.name.asc()).all()
+
+def update_contact(db: Session, contact_id: int, user: User, **fields) -> Contact:
+    c = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == user.id).first()
+    if not c:
+        return None
+    for k, v in fields.items():
+        if hasattr(c, k) and v is not None:
+            setattr(c, k, v)
+    db.commit()
+    db.refresh(c)
+    return c
+
+def delete_contact(db: Session, contact_id: int, user: User) -> bool:
+    deleted = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == user.id).delete()
+    db.commit()
+    return deleted > 0
+
+
+# ------------------------
+# ✅ Tasks
+# ------------------------
+def create_task(db: Session, user: User, title: str, description: str = None, due_at: datetime = None, source: str = None, link: str = None, created_from: str = None) -> Task:
+    task = Task(user_id=user.id, title=title, description=description, due_at=due_at, source=source, link=link, created_from=created_from)
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    logger.info(f"📝 Task created for {user.email}: {title}")
+    return task
+
+def list_tasks(db: Session, user: User, status: str = None) -> list:
+    query = db.query(Task).filter(Task.user_id == user.id)
+    if status:
+        query = query.filter(Task.status == status)
+    return query.order_by(Task.due_at.asc().nulls_last()).all()
+
+def complete_task(db: Session, user: User, task_id: int) -> Task:
+    t = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+    if not t:
+        return None
+    t.status = "done"
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+# ------------------------
+# 🔄 Google Token Refresh
+# ------------------------
+import httpx
+from app.core.config import settings
+
+async def refresh_google_access_token(refresh_token: str) -> dict:
+    data = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        res = await client.post("https://oauth2.googleapis.com/token", data=data)
+        return res.json()

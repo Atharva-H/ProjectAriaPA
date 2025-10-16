@@ -9,6 +9,7 @@ from app.db import crud, get_db
 from app.core.config import settings
 from app.core.security import decode_jwt
 from app.core.logging_config import user_context
+from app.db.crud import refresh_google_access_token
 
 router = APIRouter(prefix="/integrations/google/gmail", tags=["Google Gmail"])
 logger = logging.getLogger("ProjectAria.GoogleGmail")
@@ -49,7 +50,7 @@ async def connect_gmail(authorization: str = Header(None)):
     )
 
     logger.info(f"Redirecting {email} to Gmail OAuth")
-    return RedirectResponse(google_auth_url)
+    return {"auth_url": google_auth_url}
 
 
 @router.get("/callback")
@@ -100,3 +101,75 @@ async def gmail_callback(code: str, db: Session = Depends(get_db)):
 
     redirect_url = f"{settings.FRONTEND_URL}/integration?connected=gmail"
     return RedirectResponse(redirect_url)
+
+
+@router.get("/messages")
+async def list_gmail_messages(authorization: str = Header(None), db: Session = Depends(get_db), max_results: int = 10, label: str = None):
+    if not authorization:
+        return {"error": "Missing Authorization header"}
+    token = authorization.replace("Bearer ", "")
+    user_data = decode_jwt(token)
+    if not user_data:
+        return {"error": "Invalid token"}
+    email = user_data.get("sub")
+    user = crud.get_user_by_email(db, email)
+    if not user:
+        return {"error": "User not found"}
+
+    def _headers(access_token: str):
+        return {"Authorization": f"Bearer {access_token}"}
+
+    async def _fetch_list(access_token: str):
+        params = {"maxResults": max_results}
+        if label:
+            params["labelIds"] = label
+        url = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            return await client.get(url, headers=_headers(access_token), params=params)
+
+    access_token = user.google_gmail_token or user.access_token
+    res = await _fetch_list(access_token)
+    if res.status_code == 401 and user.google_gmail_refresh:
+        token_data = await refresh_google_access_token(user.google_gmail_refresh)
+        new_access = token_data.get("access_token")
+        if new_access:
+            crud.update_gmail_tokens(db, user, new_access, user.google_gmail_refresh, datetime.utcnow()+timedelta(hours=1))
+            res = await _fetch_list(new_access)
+
+    if res.status_code != 200:
+        return {"error": res.text}
+    return res.json()
+
+@router.get("/messages/{message_id}")
+async def get_gmail_message(message_id: str, authorization: str = Header(None), db: Session = Depends(get_db)):
+    if not authorization:
+        return {"error": "Missing Authorization header"}
+    token = authorization.replace("Bearer ", "")
+    user_data = decode_jwt(token)
+    if not user_data:
+        return {"error": "Invalid token"}
+    email = user_data.get("sub")
+    user = crud.get_user_by_email(db, email)
+    if not user:
+        return {"error": "User not found"}
+
+    def _headers(access_token: str):
+        return {"Authorization": f"Bearer {access_token}"}
+
+    async def _fetch(access_token: str):
+        url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            return await client.get(url, headers=_headers(access_token), params={"format": "full"})
+
+    access_token = user.google_gmail_token or user.access_token
+    res = await _fetch(access_token)
+    if res.status_code == 401 and user.google_gmail_refresh:
+        token_data = await refresh_google_access_token(user.google_gmail_refresh)
+        new_access = token_data.get("access_token")
+        if new_access:
+            crud.update_gmail_tokens(db, user, new_access, user.google_gmail_refresh, datetime.utcnow()+timedelta(hours=1))
+            res = await _fetch(new_access)
+
+    if res.status_code != 200:
+        return {"error": res.text}
+    return res.json()

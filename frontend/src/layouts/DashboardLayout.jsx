@@ -1,7 +1,7 @@
 // src/layouts/DashboardLayout.jsx
 import { Outlet, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import Navbar from "../components/Navbar";
+import MinimalNavbar from "../components/MinimalNavbar";
 
 export default function DashboardLayout() {
   const { user } = useAuth();
@@ -10,6 +10,7 @@ export default function DashboardLayout() {
   const navItems = [
     { name: "Dashboard", path: "/dashboard" },
     { name: "Integration", path: "/integration" },
+    { name: "Contacts", path: "/contacts" },
     { name: "Settings", path: "/settings" },
   ];
 
@@ -39,7 +40,7 @@ export default function DashboardLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
-        <Navbar />
+        <MinimalNavbar />
         <main className="flex-1 p-6 overflow-y-auto">
           <Outlet />
         </main>
