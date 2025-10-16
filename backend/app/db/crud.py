@@ -150,3 +150,56 @@ def mark_reminder_sent(db: Session, reminder_id: int):
 
 def get_pending_reminders(db: Session):
     return db.query(Reminder).filter(Reminder.sent == False).all()
+
+from app.db.models import PendingAction
+import json
+
+def set_pending_action(db: Session, user_id: int, action_type: str, event_id: str, context: dict):
+    db.query(PendingAction).filter(PendingAction.user_id == user_id).delete()
+    pending = PendingAction(
+        user_id=user_id,
+        action_type=action_type,
+        event_id=event_id,
+        context=json.dumps(context),
+    )
+    db.add(pending)
+    db.commit()
+    db.refresh(pending)
+    return pending
+
+
+def get_pending_action(db: Session, user_id: int):
+    return db.query(PendingAction).filter(PendingAction.user_id == user_id).first()
+
+
+def clear_pending_action(db: Session, user_id: int):
+    db.query(PendingAction).filter(PendingAction.user_id == user_id).delete()
+    db.commit()
+
+
+# ------------------------
+# 🔗 Google Integrations
+# ------------------------
+def update_calendar_tokens(db: Session, user: User, access_token: str, refresh_token: str, expiry_time: datetime):
+    """Persist Google Calendar OAuth tokens for a user."""
+    user_context.set(user.email)
+    user.google_calendar_token = access_token
+    if refresh_token:
+        user.google_calendar_refresh = refresh_token
+    # keep core tokens separate; do not overwrite login tokens here
+    db.commit()
+    db.refresh(user)
+    logger.info(f"🔗 Saved Google Calendar tokens for {user.email}")
+    return user
+
+
+def update_gmail_tokens(db: Session, user: User, access_token: str, refresh_token: str, expiry_time: datetime):
+    """Persist Gmail OAuth tokens for a user."""
+    user_context.set(user.email)
+    user.google_gmail_token = access_token
+    if refresh_token:
+        user.google_gmail_refresh = refresh_token
+    db.commit()
+    db.refresh(user)
+    logger.info(f"🔗 Saved Gmail tokens for {user.email}")
+    return user

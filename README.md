@@ -46,7 +46,15 @@
 
 3. **Run Server**
     ```bash
-    uvicorn app.main:app --reload
+    #Backend Server
+    uvicorn app.main:app --reload #python3 backend/run.py
+    
+    # Frontend
+    cd frontend
+    npm run dev 
+
+    # For Webhook
+    ngrok http 8000
     ```
 
 ## 📚 API Routes

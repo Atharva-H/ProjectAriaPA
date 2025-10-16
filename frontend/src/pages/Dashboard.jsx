@@ -33,6 +33,24 @@ export default function Dashboard() {
   ];
 
   useEffect(() => {
+    // ✅ Extract token from URL after OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const jwt = params.get("token");
+  
+    if (jwt) {
+      localStorage.setItem("token", jwt);
+  
+      // Clean up URL to remove token query param
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+  
+      // ✅ Force reload to refresh auth context (so token is picked up)
+      window.location.reload();
+    }
+  }, []); // Run once on mount
+
+  useEffect(() => {
+  
     const fetchEvents = async () => {
       if (!token) {
         navigate("/login");

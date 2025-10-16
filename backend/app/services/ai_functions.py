@@ -61,6 +61,61 @@ FUNCTIONS = [
         "required": ["title", "datetime"]
     }
 },
+{
+    "name": "check_event_conflict",
+    "description": "Check if a proposed time conflicts with existing calendar events.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "datetime": {
+                "type": "string",
+                "description": "Proposed date and time in natural language (e.g. 'tomorrow 4pm')."
+            },
+            "duration_minutes": {
+                "type": "integer",
+                "description": "Duration of the meeting in minutes (default 60)."
+            }
+        },
+        "required": ["datetime"]
+    }
+},
+{
+    "name": "suggest_free_slots",
+    "description": "Suggest the user's next available free slots within the next 3 days.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "days": {
+                "type": "integer",
+                "description": "How many days ahead to check (default 3)."
+            }
+        },
+        "required": []
+    }
+},
+{
+    "name": "reschedule_calendar_event",
+    "description": "Reschedule an existing calendar event to a new time.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "event_id": {
+                "type": "string",
+                "description": "The ID of the calendar event to reschedule."
+            },
+            "new_datetime": {
+                "type": "string",
+                "description": "Natural language date/time for rescheduling (e.g. 'tomorrow 2:30pm')."
+            },
+            "duration_minutes": {
+                "type": "integer",
+                "description": "New duration in minutes (default 60)."
+            }
+        },
+        "required": ["event_id", "new_datetime"]
+    }
+},
+
 
 
 

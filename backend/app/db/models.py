@@ -21,6 +21,12 @@ class User(Base):
     whatsapp_verify_expires = Column(DateTime, nullable=True)
     reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan")
 
+    google_calendar_token = Column(String, nullable=True)
+    google_calendar_refresh = Column(String, nullable=True)
+    google_gmail_token = Column(String, nullable=True)
+    google_gmail_refresh = Column(String, nullable=True)
+
+
 
 class Reminder(Base):
     __tablename__ = "reminders"
@@ -34,3 +40,13 @@ class Reminder(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="reminders")
+
+class PendingAction(Base):
+    __tablename__ = "pending_actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    action_type = Column(String)  # e.g., "calendar_conflict"
+    event_id = Column(String)
+    context = Column(String)  # store JSON context (slots, message, etc.)
+    created_at = Column(DateTime, default=datetime.utcnow)

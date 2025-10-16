@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import API from "../services/api";
 import {
@@ -7,18 +7,64 @@ import {
   Mail,
   CheckCircle,
   XCircle,
-  RefreshCw,
   Phone,
 } from "lucide-react";
 
 export default function Integration() {
   const { user, token } = useAuth();
+
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState(false);
   const [number, setNumber] = useState(user?.whatsapp_no || "");
   const [verified, setVerified] = useState(user?.whatsapp_verified || false);
   const [loading, setLoading] = useState(false);
   const [changing, setChanging] = useState(false);
 
-  // Send verification message
+  // --------------------------------------------------------
+  // 🔍 Fetch integration status
+  // --------------------------------------------------------
+  useEffect(() => {
+    const fetchIntegrationStatus = async () => {
+      try {
+        const res = await API.get("/integrations/status");
+        const data = res.data;
+        setCalendarConnected(data.google_calendar?.connected || false);
+        setGmailConnected(data.google_gmail?.connected || false);
+        setNumber(data.whatsapp?.number || "");
+        setVerified(data.whatsapp?.connected || false);
+      } catch (err) {
+        console.error("❌ Failed to fetch integration status:", err);
+      }
+    };
+    if (token) fetchIntegrationStatus();
+  }, [token]);
+
+  // --------------------------------------------------------
+  // 🔗 Google Integrations (✅ Correct version)
+  // --------------------------------------------------------
+  const connectGoogleCalendar = async () => {
+    try {
+      const res = await API.get("/integrations/google/calendar/connect");
+      window.location.href = res.data.auth_url; // Redirect to Google Auth
+    } catch (err) {
+      console.error("❌ Failed to start calendar connection:", err);
+      alert("Error connecting Google Calendar.");
+    }
+  };
+
+  const connectGoogleGmail = async () => {
+    try {
+      const res = await API.get("/integrations/google/gmail/connect");
+      window.location.href = res.data.auth_url; // Redirect to Google Auth
+    } catch (err) {
+      console.error("❌ Failed to start Gmail connection:", err);
+      alert("Error connecting Gmail.");
+    }
+  };
+
+  // --------------------------------------------------------
+  // 📱 WhatsApp Integration
+  // --------------------------------------------------------
   const sendVerification = async () => {
     if (!number.startsWith("+")) {
       alert("Enter a valid phone number with country code (e.g. +919876543210)");
@@ -26,11 +72,7 @@ export default function Integration() {
     }
     setLoading(true);
     try {
-      await API.post(
-        "/whatsapp/link",
-        { number },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await API.post("/whatsapp/link", { number });
       alert("Verification code sent to your WhatsApp!");
     } catch (err) {
       console.error(err);
@@ -40,17 +82,12 @@ export default function Integration() {
     }
   };
 
-  // Verify code
   const verifyCode = async () => {
     const code = prompt("Enter the 6-digit verification code sent to WhatsApp:");
     if (!code) return;
     setLoading(true);
     try {
-      const res = await API.post(
-        "/whatsapp/verify",
-        { number, code },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await API.post("/whatsapp/verify", { number, code });
       if (res.data.status === "verified") {
         alert("✅ WhatsApp linked successfully!");
         setVerified(true);
@@ -62,15 +99,10 @@ export default function Integration() {
     }
   };
 
-  // Disconnect WhatsApp
   const unlinkWhatsapp = async () => {
     if (!confirm("Are you sure you want to disconnect WhatsApp?")) return;
     try {
-      await API.post(
-        "/whatsapp/unlink",
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await API.post("/whatsapp/unlink");
       setVerified(false);
       setNumber("");
       alert("WhatsApp disconnected successfully.");
@@ -79,13 +111,15 @@ export default function Integration() {
     }
   };
 
-  // Change number flow
   const startChange = () => {
     setChanging(true);
     setVerified(false);
     setNumber("");
   };
 
+  // --------------------------------------------------------
+  // 🧩 UI Rendering
+  // --------------------------------------------------------
   return (
     <div className="min-h-screen flex flex-col items-center bg-gray-50 py-10 px-4">
       <h1 className="text-3xl font-bold text-gray-800 mb-8">
@@ -93,7 +127,7 @@ export default function Integration() {
       </h1>
 
       <div className="grid gap-6 w-full max-w-3xl">
-        {/* Google Calendar */}
+        {/* -------------------- Google Calendar -------------------- */}
         <div className="bg-white shadow-md rounded-xl p-6 flex items-center justify-between border">
           <div className="flex items-center gap-4">
             <Calendar className="text-blue-600 w-8 h-8" />
@@ -104,13 +138,50 @@ export default function Integration() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <CheckCircle className="text-green-600 w-5 h-5" />
-            <span className="text-green-600 font-medium">Connected</span>
-          </div>
+
+          {calendarConnected ? (
+            <div className="flex items-center gap-2 text-green-600 font-medium">
+              <CheckCircle className="w-5 h-5" />
+              Connected
+            </div>
+          ) : (
+            <button
+              onClick={connectGoogleCalendar}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+            >
+              Connect
+            </button>
+          )}
         </div>
 
-        {/* WhatsApp */}
+        {/* -------------------- Gmail -------------------- */}
+        <div className="bg-white shadow-md rounded-xl p-6 flex items-center justify-between border">
+          <div className="flex items-center gap-4">
+            <Mail className="text-red-600 w-8 h-8" />
+            <div>
+              <h2 className="text-lg font-semibold">Google Gmail</h2>
+              <p className="text-sm text-gray-500">
+                Read and analyze your emails (read-only access).
+              </p>
+            </div>
+          </div>
+
+          {gmailConnected ? (
+            <div className="flex items-center gap-2 text-green-600 font-medium">
+              <CheckCircle className="w-5 h-5" />
+              Connected
+            </div>
+          ) : (
+            <button
+              onClick={connectGoogleGmail}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm"
+            >
+              Connect
+            </button>
+          )}
+        </div>
+
+        {/* -------------------- WhatsApp -------------------- */}
         <div className="bg-white shadow-md rounded-xl p-6 border flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -139,7 +210,7 @@ export default function Integration() {
             <div className="flex items-center justify-between mt-2">
               <div className="text-gray-700">
                 <Phone className="inline mr-2 w-4 h-4 text-gray-500" />
-                <span className="font-medium">{user?.whatsapp_no}</span>
+                <span className="font-medium">{number}</span>
               </div>
               <div className="flex gap-3">
                 <button
@@ -183,23 +254,6 @@ export default function Integration() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Email */}
-        <div className="bg-white shadow-md rounded-xl p-6 flex items-center justify-between border opacity-60">
-          <div className="flex items-center gap-4">
-            <Mail className="text-gray-400 w-8 h-8" />
-            <div>
-              <h2 className="text-lg font-semibold">Email</h2>
-              <p className="text-sm text-gray-500">
-                Email notifications and summaries (coming soon).
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-gray-400 font-medium">
-            <RefreshCw className="w-5 h-5" />
-            Coming Soon
-          </div>
         </div>
       </div>
     </div>

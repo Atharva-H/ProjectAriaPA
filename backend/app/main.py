@@ -5,12 +5,19 @@ import logging
 from app.db.database import engine
 from app.db.models import Base
 from app.routes.auth_routes import router as auth_router
-from app.routes.whatsapp_routes import router as whatsapp_router
+from app.routes.whatsapp import router as whatsapp_router
 from app.routes.user_routes import router as user_router
 from app.routes.calendar_routes import router as calendar_router
+from app.routes.integrations.google_calendar_routes import router as google_calendar_routes
+from app.routes.integrations.google_gmail_routes import router as google_gmail_routes
+from app.routes.integrations.integration_status_routes import router as integration_status_routes
+
+
+
 
 from app.core.logging_config import setup_logging, user_context  # 👈 new import
 from app.services.reminder_service import init_scheduler, shutdown_scheduler
+
 
 
 # -------------------------------------------
@@ -96,6 +103,10 @@ app.include_router(auth_router)
 app.include_router(whatsapp_router)
 app.include_router(user_router)
 app.include_router(calendar_router)
+app.include_router(google_calendar_routes)
+app.include_router(google_gmail_routes)
+app.include_router(integration_status_routes)
+
 
 # -------------------------------------------
 # 🩺 Root health check
