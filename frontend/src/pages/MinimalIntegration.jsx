@@ -9,7 +9,8 @@ import {
   XCircle, 
   ExternalLink,
   RefreshCw,
-  Settings
+  Settings,
+  X
 } from "lucide-react";
 
 export default function MinimalIntegration() {
@@ -19,6 +20,7 @@ export default function MinimalIntegration() {
     google_gmail: { connected: false, loading: false },
     whatsapp: { connected: false, loading: false },
   });
+  const [whatsappModal, setWhatsappModal] = useState({ show: false, step: 'phone', phone: '', code: '' });
 
   useEffect(() => {
     if (token) fetchIntegrationStatus();
@@ -26,7 +28,9 @@ export default function MinimalIntegration() {
 
   const fetchIntegrationStatus = async () => {
     try {
-      const res = await API.get("/integrations/status");
+      const res = await API.get("/integrations/status", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setIntegrations(res.data);
     } catch (err) {
       console.error("Failed to fetch integration status:", err);
@@ -40,25 +44,33 @@ export default function MinimalIntegration() {
     }));
 
     try {
-      // Map service names to correct API endpoints
-      const endpointMap = {
-        'google_calendar': 'calendar',
-        'google_gmail': 'gmail',
-        'whatsapp': 'whatsapp'
-      };
-      
-      const endpoint = endpointMap[service] || service;
-      
-      // Get the auth URL from the backend
-      const res = await API.get(`/integrations/google/${endpoint}/connect`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Redirect to Google OAuth
-      if (res.data.auth_url) {
-        window.location.href = res.data.auth_url;
+      if (service === 'whatsapp') {
+        // WhatsApp uses phone number verification, not OAuth
+        setWhatsappModal({ show: true, step: 'phone', phone: '', code: '' });
+        setIntegrations(prev => ({
+          ...prev,
+          [service]: { ...prev[service], loading: false }
+        }));
       } else {
-        throw new Error(res.data.error || 'Failed to get auth URL');
+        // Google services use OAuth
+        const endpointMap = {
+          'google_calendar': 'calendar',
+          'google_gmail': 'gmail'
+        };
+        
+        const endpoint = endpointMap[service] || service;
+        
+        // Get the auth URL from the backend
+        const res = await API.get(`/integrations/google/${endpoint}/connect`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Redirect to Google OAuth
+        if (res.data.auth_url) {
+          window.location.href = res.data.auth_url;
+        } else {
+          throw new Error(res.data.error || 'Failed to get auth URL');
+        }
       }
     } catch (err) {
       console.error(`Failed to connect ${service}:`, err);
@@ -73,13 +85,55 @@ export default function MinimalIntegration() {
     if (!confirm(`Disconnect ${service}?`)) return;
     
     try {
-      await API.post(`/integrations/${service}/disconnect`);
+      if (service === 'google_calendar') {
+        await API.post("/integrations/google/calendar/disconnect", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else if (service === 'whatsapp') {
+        await API.post("/whatsapp/unlink", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        await API.post(`/integrations/${service}/disconnect`);
+      }
+      
       setIntegrations(prev => ({
         ...prev,
         [service]: { connected: false, loading: false }
       }));
     } catch (err) {
       console.error(`Failed to disconnect ${service}:`, err);
+    }
+  };
+
+  const handleWhatsappPhoneSubmit = async () => {
+    if (!whatsappModal.phone) return;
+    
+    try {
+      await API.post("/whatsapp/link", 
+        { number: whatsappModal.phone },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setWhatsappModal(prev => ({ ...prev, step: 'code' }));
+    } catch (err) {
+      console.error("Failed to send verification code:", err);
+      alert("Failed to send verification code. Please try again.");
+    }
+  };
+
+  const handleWhatsappCodeSubmit = async () => {
+    if (!whatsappModal.code) return;
+    
+    try {
+      await API.post("/whatsapp/verify", 
+        { number: whatsappModal.phone, code: whatsappModal.code },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setWhatsappModal({ show: false, step: 'phone', phone: '', code: '' });
+      fetchIntegrationStatus();
+    } catch (err) {
+      console.error("Failed to verify code:", err);
+      alert("Invalid verification code. Please try again.");
     }
   };
 
@@ -155,7 +209,9 @@ export default function MinimalIntegration() {
                       <>
                         <div className="flex items-center space-x-2 text-green-600">
                           <CheckCircle2 className="w-5 h-5" />
-                          <span className="minimal-text font-medium">Connected</span>
+                          <span className="minimal-text font-medium">
+                            Connected{config.key === 'whatsapp' && integration.number ? ` (${integration.number})` : ''}
+                          </span>
                         </div>
                         <button
                           onClick={() => handleDisconnect(config.key)}
@@ -236,6 +292,87 @@ export default function MinimalIntegration() {
           </div>
         </div>
       </div>
+
+      {/* WhatsApp Verification Modal */}
+      {whatsappModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="minimal-heading minimal-heading-md">Connect WhatsApp</h3>
+              <button
+                onClick={() => setWhatsappModal({ show: false, step: 'phone', phone: '', code: '' })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {whatsappModal.step === 'phone' ? (
+              <div>
+                <p className="minimal-text-secondary mb-4">
+                  Enter your WhatsApp number to receive a verification code.
+                </p>
+                <div className="mb-4">
+                  <label className="block minimal-text font-medium mb-2">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={whatsappModal.phone}
+                    onChange={(e) => setWhatsappModal(prev => ({ ...prev, phone: e.target.value }))}
+                    placeholder="+919876543210"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setWhatsappModal({ show: false, step: 'phone', phone: '', code: '' })}
+                    className="minimal-button minimal-button-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleWhatsappPhoneSubmit}
+                    disabled={!whatsappModal.phone}
+                    className="minimal-button minimal-button-primary"
+                  >
+                    Send Code
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="minimal-text-secondary mb-4">
+                  Enter the verification code sent to {whatsappModal.phone}
+                </p>
+                <div className="mb-4">
+                  <label className="block minimal-text font-medium mb-2">Verification Code</label>
+                  <input
+                    type="text"
+                    value={whatsappModal.code}
+                    onChange={(e) => setWhatsappModal(prev => ({ ...prev, code: e.target.value }))}
+                    placeholder="123456"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setWhatsappModal(prev => ({ ...prev, step: 'phone' }))}
+                    className="minimal-button minimal-button-secondary"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleWhatsappCodeSubmit}
+                    disabled={!whatsappModal.code}
+                    className="minimal-button minimal-button-primary"
+                  >
+                    Verify
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
