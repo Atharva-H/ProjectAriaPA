@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -25,6 +25,16 @@ class User(Base):
     google_calendar_refresh = Column(String, nullable=True)
     google_gmail_token = Column(String, nullable=True)
     google_gmail_refresh = Column(String, nullable=True)
+
+    # Tally integration fields
+    tally_database_name = Column(String, nullable=True)
+    tally_connected = Column(Boolean, default=False)
+    tally_company_name = Column(String, nullable=True)
+    
+    # Working hours and days settings
+    working_hours_start = Column(Integer, nullable=True, default=9)  # Hour (0-23), default 9 AM
+    working_hours_end = Column(Integer, nullable=True, default=18)   # Hour (0-23), default 6 PM
+    working_days = Column(JSON, nullable=True, default='["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]')  # JSON array of days
 
 
 
@@ -77,4 +87,17 @@ class Task(Base):
     source = Column(String, nullable=True)  # gmail | mom | whatsapp | call
     link = Column(String, nullable=True)
     created_from = Column(String, nullable=True)  # message id / email id
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role = Column(String, nullable=False)  # "user" or "assistant"
+    content = Column(String, nullable=False)
+    intent = Column(String, nullable=True)  # AI detected intent
+    message_type = Column(String, nullable=True)  # "text", "event_card", "confirmation", etc.
+    message_metadata = Column(JSON, nullable=True)  # JSON field for event data, confirmation prompts, etc.
     created_at = Column(DateTime, default=datetime.utcnow)

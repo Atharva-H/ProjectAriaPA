@@ -50,6 +50,12 @@ def send_whatsapp_message(to_whatsapp: str, body: str):
             f"❌ Twilio API error while sending to {to_whatsapp} (user: {user_id}) — "
             f"Code: {e.code}, Message: {e.msg}"
         )
+        
+        # Handle rate limiting gracefully
+        if e.code == 63038:  # Daily message limit exceeded
+            logger.warning(f"⚠️ Twilio rate limit exceeded for {to_whatsapp}. Message not sent.")
+            return None  # Return None instead of raising exception
+        
         raise e
     except Exception as e:
         logger.exception(f"Unexpected error sending WhatsApp message to {to_whatsapp}: {e}")

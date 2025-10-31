@@ -6,6 +6,8 @@ import MinimalSignup from "../pages/MinimalSignup";
 import MinimalDashboard from "../pages/MinimalDashboard";
 import MinimalIntegration from "../pages/MinimalIntegration";
 import MinimalContacts from "../pages/MinimalContacts";
+import AccountingDashboard from "../pages/AccountingDashboard";
+import Chat from "../pages/Chat";
 import About from "../pages/About";
 import Settings from "../pages/Settings";
 import AccountDetails from "../pages/AccountDetails";
@@ -40,10 +42,13 @@ export default function AppRouter() {
           }
         >
           <Route path="/dashboard" element={<MinimalDashboard />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/integration" element={<MinimalIntegration />} />
           <Route path="/contacts" element={<MinimalContacts />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/account" element={<AccountDetails />} />
+          {/* Accounting routes */}
+          <Route path="/accounting/dashboard" element={<AccountingDashboard />} />
         </Route>
 
         {/* 404 Route - Catch all unmatched routes */}

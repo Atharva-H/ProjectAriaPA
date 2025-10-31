@@ -8,7 +8,7 @@ from app.services.ai_service import interpret_message
 from app.services.conversation_manager import add_user_message, add_assistant_message, get_recent_chat
 
 # Handlers
-from app.routes.whatsapp.handlers import calendar_handler, profile_handler, help_handler
+from app.routes.whatsapp.handlers import calendar_handler, profile_handler, help_handler, tally_handler
 
 router = APIRouter()
 logger = logging.getLogger("ProjectAria.WhatsApp")
@@ -42,7 +42,11 @@ async def whatsapp_webhook(request: Request, x_twilio_signature: str = Header(No
     intent = ai_result.get("intent", "unknown")
     params = ai_result.get("params", {})
 
-    if intent.startswith("get_") or intent.startswith("create_"):
+    # Handle Tally intents
+    if intent.startswith("get_tally_"):
+        return await tally_handler.handle_tally_intent(intent, params, user, from_number, db)
+
+    elif intent.startswith("get_") or intent.startswith("create_"):
         return await calendar_handler.handle_calendar_intent(intent, params, user, from_number, db)
 
     elif intent == "get_user_profile":
@@ -52,7 +56,7 @@ async def whatsapp_webhook(request: Request, x_twilio_signature: str = Header(No
         return await help_handler.handle_help_intent(from_number)
 
     else:
-        reply = "🤖 Sorry, I didn’t understand that. Try 'Show my meetings today'."
+        reply = "🤖 Sorry, I didn't understand that. Try 'Show my meetings today' or 'outstanding of ABC Company'."
         send_whatsapp_message(from_number, reply)
         add_assistant_message(user.id, reply)
         return {"status": "unknown_intent"}

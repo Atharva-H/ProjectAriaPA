@@ -5,6 +5,7 @@ import {
   Calendar, 
   Mail, 
   MessageSquare, 
+  Database,
   CheckCircle2, 
   XCircle, 
   ExternalLink,
@@ -19,8 +20,10 @@ export default function MinimalIntegration() {
     google_calendar: { connected: false, loading: false },
     google_gmail: { connected: false, loading: false },
     whatsapp: { connected: false, loading: false },
+    tally: { connected: false, loading: false },
   });
   const [whatsappModal, setWhatsappModal] = useState({ show: false, step: 'phone', phone: '', code: '' });
+  const [tallyModal, setTallyModal] = useState({ show: false, serverUrl: '', companyName: '' });
 
   useEffect(() => {
     if (token) fetchIntegrationStatus();
@@ -47,6 +50,13 @@ export default function MinimalIntegration() {
       if (service === 'whatsapp') {
         // WhatsApp uses phone number verification, not OAuth
         setWhatsappModal({ show: true, step: 'phone', phone: '', code: '' });
+        setIntegrations(prev => ({
+          ...prev,
+          [service]: { ...prev[service], loading: false }
+        }));
+      } else if (service === 'tally') {
+        // Tally uses server configuration
+        setTallyModal({ show: true, serverUrl: 'http://192.168.1.195:9000', companyName: 'Paricott India Papercup Pvt. Ltd. (24-26)' });
         setIntegrations(prev => ({
           ...prev,
           [service]: { ...prev[service], loading: false }
@@ -93,6 +103,10 @@ export default function MinimalIntegration() {
         await API.post("/whatsapp/unlink", {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
+      } else if (service === 'tally') {
+        await API.post("/integrations/tally/disconnect", {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       } else {
         await API.post(`/integrations/${service}/disconnect`);
       }
@@ -137,6 +151,25 @@ export default function MinimalIntegration() {
     }
   };
 
+  const handleTallyConnect = async () => {
+    if (!tallyModal.serverUrl) return;
+    
+    try {
+      await API.post("/integrations/tally/connect", 
+        { 
+          server_url: tallyModal.serverUrl,
+          company_name: tallyModal.companyName || null
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setTallyModal({ show: false, serverUrl: '', companyName: '' });
+      fetchIntegrationStatus();
+    } catch (err) {
+      console.error("Failed to connect to Tally:", err);
+      alert("Failed to connect to Tally server. Please check the server URL and try again.");
+    }
+  };
+
   const integrationConfig = [
     {
       key: "google_calendar",
@@ -161,6 +194,14 @@ export default function MinimalIntegration() {
       icon: MessageSquare,
       color: "green",
       features: ["AI chat assistant", "Share meeting summaries", "Get reminders"]
+    },
+    {
+      key: "tally",
+      name: "Tally Prime",
+      description: "Connect to your Tally accounting system",
+      icon: Database,
+      color: "purple",
+      features: ["View ledgers", "Track vouchers", "Monitor inventory"]
     }
   ];
 
@@ -190,12 +231,14 @@ export default function MinimalIntegration() {
                     <div className={`p-3 rounded-lg ${
                       config.color === 'blue' ? 'bg-blue-100' :
                       config.color === 'red' ? 'bg-red-100' :
-                      'bg-green-100'
+                      config.color === 'green' ? 'bg-green-100' :
+                      'bg-purple-100'
                     }`}>
                       <Icon className={`w-6 h-6 ${
                         config.color === 'blue' ? 'text-blue-600' :
                         config.color === 'red' ? 'text-red-600' :
-                        'text-green-600'
+                        config.color === 'green' ? 'text-green-600' :
+                        'text-purple-600'
                       }`} />
                     </div>
                     <div>
@@ -370,6 +413,64 @@ export default function MinimalIntegration() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Tally Connection Modal */}
+      {tallyModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="minimal-heading minimal-heading-md">Connect Tally Prime</h3>
+              <button
+                onClick={() => setTallyModal({ show: false, serverUrl: '', companyName: '' })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <p className="minimal-text-secondary mb-4">
+                Enter your Tally Prime server details to connect.
+              </p>
+              <div className="mb-4">
+                <label className="block minimal-text font-medium mb-2">Server URL</label>
+                <input
+                  type="url"
+                  value={tallyModal.serverUrl}
+                  onChange={(e) => setTallyModal(prev => ({ ...prev, serverUrl: e.target.value }))}
+                  placeholder="http://192.168.1.195:9000"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block minimal-text font-medium mb-2">Company Name (Optional)</label>
+                <input
+                  type="text"
+                  value={tallyModal.companyName}
+                  onChange={(e) => setTallyModal(prev => ({ ...prev, companyName: e.target.value }))}
+                  placeholder="Paricott India Papercup Pvt. Ltd. (24-26)"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setTallyModal({ show: false, serverUrl: '', companyName: '' })}
+                  className="minimal-button minimal-button-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTallyConnect}
+                  disabled={!tallyModal.serverUrl}
+                  className="minimal-button minimal-button-primary"
+                >
+                  Connect
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

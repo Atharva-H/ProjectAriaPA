@@ -35,15 +35,24 @@ async def handle_calendar_intent(intent, params, user, from_number, db):
     if intent == "get_today_events":
         events, message = await fetch_today_events_for_user(user)
         if not events:
-            send_whatsapp_message(from_number, "📭 You have no events scheduled for today.")
+            try:
+                send_whatsapp_message(from_number, "📭 You have no events scheduled for today.")
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
         else:
-            send_whatsapp_message(from_number, f"📅 Today's events:\n\n{message}")
+            try:
+                send_whatsapp_message(from_number, f"📅 Today's events:\n\n{message}")
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
         return {"status": "ok"}
 
     elif intent == "get_upcoming_events":
         days = int(params.get("days", 7))
         events, message = await fetch_upcoming_events_for_user(user, days)
-        send_whatsapp_message(from_number, message or "📭 No events in the next 7 days.")
+        try:
+            send_whatsapp_message(from_number, message or "📭 No events in the next 7 days.")
+        except Exception as e:
+            logger.warning(f"Failed to send WhatsApp message: {e}")
         return {"status": "ok"}
 
     elif intent == "create_calendar_event":
@@ -55,30 +64,42 @@ async def handle_calendar_intent(intent, params, user, from_number, db):
         # Ask for AM/PM clarification when necessary
         ambiguous = _is_time_ambiguous(datetime_str)
         if ambiguous:
-            send_whatsapp_message(
-                from_number,
-                (
-                    f"⏰ I noticed the time '{ambiguous}' doesn't specify AM or PM.\n"
-                    "Please reply with AM or PM (e.g., '2:30 PM')."
-                ),
-            )
+            try:
+                send_whatsapp_message(
+                    from_number,
+                    (
+                        f"⏰ I noticed the time '{ambiguous}' doesn't specify AM or PM.\n"
+                        "Please reply with AM or PM (e.g., '2:30 PM')."
+                    ),
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
             return {"status": "need_time_clarification"}
 
         result = await create_event_for_user(user, title, description, datetime_str, duration)
 
         if result.get("status") == "conflict":
             # Directly forward the conflict message with available slots
-            send_whatsapp_message(from_number, result["message"])
+            try:
+                send_whatsapp_message(from_number, result["message"])
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
             return {"status": "conflict"}
 
         if result.get("status") != "success":
-            send_whatsapp_message(from_number, f"❌ {result.get('error', 'Event creation failed.')}")
+            try:
+                send_whatsapp_message(from_number, f"❌ {result.get('error', 'Event creation failed.')}")
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
             return {"status": "error"}
 
         event_start = result.get("start")
         summary = result.get("summary", title)
         if not event_start:
-            send_whatsapp_message(from_number, f"✅ Event '{summary}' created.")
+            try:
+                send_whatsapp_message(from_number, f"✅ Event '{summary}' created.")
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
             return {"status": "ok"}
 
         run_at_utc = event_start.astimezone(timezone.utc) - timedelta(minutes=10)
@@ -99,11 +120,17 @@ async def handle_calendar_intent(intent, params, user, from_number, db):
                 f"I'll remind you 10 min before." 
                 f"{link_part}"
             )
-            send_whatsapp_message(from_number, msg)
+            try:
+                send_whatsapp_message(from_number, msg)
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
         else:
             link_part = f"\n🔗 Link: {result['event_link']}" if result.get("event_link") else ""
-            send_whatsapp_message(
-                from_number,
-                f"✅ Event '{summary}' created (too close for reminder).{link_part}"
-            )
+            try:
+                send_whatsapp_message(
+                    from_number,
+                    f"✅ Event '{summary}' created (too close for reminder).{link_part}"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send WhatsApp message: {e}")
         return {"status": "ok"}

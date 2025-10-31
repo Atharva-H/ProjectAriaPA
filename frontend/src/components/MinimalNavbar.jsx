@@ -2,15 +2,17 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { APP_NAME } from "../utils/constants";
-import { Menu, X, User, Settings, LogOut, Calendar, Users, Zap } from "lucide-react";
+import { Menu, X, User, Settings, LogOut, Calendar, Users, Zap, MessageSquare, Calculator, BarChart3 } from "lucide-react";
 
 export default function MinimalNavbar() {
   const navigate = useNavigate();
   const { user, logout, token } = useContext(AuthContext);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [accountingOpen, setAccountingOpen] = useState(false);
   const menuRef = useRef(null);
   const profileRef = useRef(null);
+  const accountingRef = useRef(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -21,6 +23,9 @@ export default function MinimalNavbar() {
       if (profileRef.current && !profileRef.current.contains(e.target)) {
         setProfileOpen(false);
       }
+      if (accountingRef.current && !accountingRef.current.contains(e.target)) {
+        setAccountingOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -28,8 +33,17 @@ export default function MinimalNavbar() {
 
   const navItems = [
     { name: "Dashboard", path: "/dashboard", icon: Calendar },
+    { name: "Chat", path: "/chat", icon: MessageSquare },
     { name: "Contacts", path: "/contacts", icon: Users },
     { name: "Integration", path: "/integration", icon: Zap },
+    { 
+      name: "Accounting", 
+      path: "/accounting", 
+      icon: Calculator,
+      subItems: [
+        { name: "Dashboard", path: "/accounting/dashboard", icon: BarChart3 }
+      ]
+    },
   ];
 
   return (
@@ -51,6 +65,44 @@ export default function MinimalNavbar() {
             <div className="hidden md:flex items-center space-x-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
+                
+                // Handle dropdown items
+                if (item.subItems) {
+                  return (
+                    <div key={item.path} className="relative" ref={accountingRef}>
+                      <button
+                        onClick={() => setAccountingOpen(!accountingOpen)}
+                        className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span>{item.name}</span>
+                      </button>
+                      
+                      {accountingOpen && (
+                        <div className="absolute top-full left-0 mt-1 w-48 minimal-card animate-fade-in">
+                          <div className="p-2">
+                            {item.subItems.map((subItem) => {
+                              const SubIcon = subItem.icon;
+                              return (
+                                <Link
+                                  key={subItem.path}
+                                  to={subItem.path}
+                                  onClick={() => setAccountingOpen(false)}
+                                  className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg"
+                                >
+                                  <SubIcon className="w-4 h-4" />
+                                  <span>{subItem.name}</span>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                
+                // Handle regular items
                 return (
                   <Link
                     key={item.path}
@@ -136,6 +188,36 @@ export default function MinimalNavbar() {
                       <div className="p-2">
                         {navItems.map((item) => {
                           const Icon = item.icon;
+                          
+                          // Handle dropdown items in mobile
+                          if (item.subItems) {
+                            return (
+                              <div key={item.path} className="mb-2">
+                                <div className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-gray-900">
+                                  <Icon className="w-4 h-4" />
+                                  <span>{item.name}</span>
+                                </div>
+                                <div className="ml-4 space-y-1">
+                                  {item.subItems.map((subItem) => {
+                                    const SubIcon = subItem.icon;
+                                    return (
+                                      <Link
+                                        key={subItem.path}
+                                        to={subItem.path}
+                                        onClick={() => setMenuOpen(false)}
+                                        className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg"
+                                      >
+                                        <SubIcon className="w-4 h-4" />
+                                        <span>{subItem.name}</span>
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // Handle regular items
                           return (
                             <Link
                               key={item.path}

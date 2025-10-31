@@ -12,3 +12,7 @@ openai
 dateparser
 APScheduler>=3.10.1
 python-dateutil>=2.8.2
+websockets
+python-multipart
+asyncpg>=0.28.0
+sqlparse>=0.4.4

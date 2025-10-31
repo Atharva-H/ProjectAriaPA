@@ -2,11 +2,27 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import API from "../services/api";
-import { User, Mail, Calendar, Shield, LogOut, MessageSquare, Phone } from "lucide-react";
+import { User, Mail, Calendar, Shield, LogOut, MessageSquare, Phone, Clock, Check, X } from "lucide-react";
 
 export default function AccountDetails() {
   const { user, token, logout } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [workingHours, setWorkingHours] = useState({
+    start: user?.working_hours_start || 9,
+    end: user?.working_hours_end || 18,
+  });
+  const [workingDays, setWorkingDays] = useState(() => {
+    if (user?.working_days) {
+      if (Array.isArray(user.working_days)) {
+        return user.working_days;
+      } else if (typeof user.working_days === 'string') {
+        return user.working_days.split(',');
+      }
+    }
+    return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -15,7 +31,57 @@ export default function AccountDetails() {
       return;
     }
     setLoading(false);
-  }, [token, navigate]);
+    if (user) {
+      setWorkingHours({
+        start: user.working_hours_start || 9,
+        end: user.working_hours_end || 18,
+      });
+      // Handle working_days as either array or comma-separated string
+      let days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']; // Default
+      if (user.working_days) {
+        if (Array.isArray(user.working_days)) {
+          days = user.working_days;
+        } else if (typeof user.working_days === 'string') {
+          days = user.working_days.split(',');
+        }
+      }
+      setWorkingDays(days);
+    }
+  }, [token, navigate, user]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const response = await API.put('/users/me', {
+        working_hours_start: parseInt(workingHours.start),
+        working_hours_end: parseInt(workingHours.end),
+        working_days: workingDays, // Send as array, backend will handle JSON conversion
+      });
+      
+      if (response.data) {
+        setIsEditing(false);
+        // Update the user context if available
+        if (window.location.reload) {
+          window.location.reload();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save working hours:', error);
+      alert('Failed to save working hours. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleDay = (day) => {
+    if (workingDays.includes(day)) {
+      setWorkingDays(workingDays.filter(d => d !== day));
+    } else {
+      setWorkingDays([...workingDays, day]);
+    }
+  };
+
+  const allDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   if (loading) {
     return (
@@ -42,7 +108,7 @@ export default function AccountDetails() {
           <p className="minimal-text-secondary">Manage your account information and settings</p>
         </div>
 
-        <div className="minimal-grid minimal-grid-2 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
           {/* Profile Card */}
           <div className="minimal-card p-8">
             <div className="flex items-center space-x-6 mb-8">
@@ -145,6 +211,128 @@ export default function AccountDetails() {
                 Sign Out
               </button>
             </div>
+          </div>
+
+          {/* Working Hours Card */}
+          <div className="minimal-card p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="minimal-heading minimal-heading-md">Working Hours & Days</h3>
+                  <p className="minimal-text-tertiary">Configure your availability for calendar features</p>
+                </div>
+              </div>
+              {!isEditing ? (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="minimal-button minimal-button-secondary"
+                >
+                  Edit
+                </button>
+              ) : (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="minimal-button minimal-button-primary"
+                  >
+                    <Check className="w-4 h-4 mr-2" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    className="minimal-button minimal-button-secondary"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {!isEditing ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="minimal-text-tertiary mb-2">Working Hours</p>
+                  <p className="minimal-text font-medium">
+                    {workingHours.start > 12 
+                      ? `${workingHours.start - 12} PM` 
+                      : workingHours.start === 12 
+                        ? '12 PM' 
+                        : `${workingHours.start} AM`} - {workingHours.end > 12 
+                      ? `${workingHours.end - 12} PM` 
+                      : workingHours.end === 12 
+                        ? '12 PM' 
+                        : `${workingHours.end} AM`}
+                  </p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <p className="minimal-text-tertiary mb-2">Working Days</p>
+                  <div className="flex flex-wrap gap-2">
+                    {workingDays.map((day) => (
+                      <span
+                        key={day}
+                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                      >
+                        {day}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <label className="minimal-text font-medium mb-2 block">Start Time</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={workingHours.start}
+                    onChange={(e) => setWorkingHours({ ...workingHours, start: parseInt(e.target.value) || 0 })}
+                    className="w-full minimal-input"
+                  />
+                  <p className="minimal-text-tertiary text-sm mt-1">24-hour format (0-23). Default: 9 (9 AM)</p>
+                </div>
+
+                <div>
+                  <label className="minimal-text font-medium mb-2 block">End Time</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={workingHours.end}
+                    onChange={(e) => setWorkingHours({ ...workingHours, end: parseInt(e.target.value) || 0 })}
+                    className="w-full minimal-input"
+                  />
+                  <p className="minimal-text-tertiary text-sm mt-1">24-hour format (0-23). Default: 18 (6 PM)</p>
+                </div>
+
+                <div>
+                  <label className="minimal-text font-medium mb-2 block">Working Days</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {allDays.map((day) => (
+                      <label
+                        key={day}
+                        className={`flex items-center space-x-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
+                          workingDays.includes(day) ? 'bg-blue-50 border-blue-500' : 'bg-white border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={workingDays.includes(day)}
+                          onChange={() => toggleDay(day)}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="minimal-text">{day}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

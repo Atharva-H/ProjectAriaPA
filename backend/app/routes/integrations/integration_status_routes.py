@@ -26,4 +26,9 @@ async def get_integration_status(authorization: str = Header(None), db: Session 
             "connected": bool(user.whatsapp_verified),
             "number": user.whatsapp_no
         },
+        "tally": {
+            "connected": bool(user.tally_connected),
+            "database_name": user.tally_database_name,
+            "company": user.tally_company_name
+        }
     }

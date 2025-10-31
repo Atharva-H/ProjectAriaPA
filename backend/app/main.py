@@ -11,8 +11,11 @@ from app.routes.calendar_routes import router as calendar_router
 from app.routes.integrations.google_calendar_routes import router as google_calendar_routes
 from app.routes.integrations.google_gmail_routes import router as google_gmail_routes
 from app.routes.integrations.integration_status_routes import router as integration_status_routes
+from app.routes.integrations.accounting.tally_routes import router as tally_routes
+from app.routes.integrations.accounting.accounting_routes import router as accounting_routes
 from app.routes.contacts_routes import router as contacts_routes
 from app.routes.media_routes import router as media_routes
+from app.routes.chat_routes import router as chat_routes
 
 
 
@@ -108,8 +111,11 @@ app.include_router(calendar_router)
 app.include_router(google_calendar_routes)
 app.include_router(google_gmail_routes)
 app.include_router(integration_status_routes)
+app.include_router(tally_routes)
+app.include_router(accounting_routes)
 app.include_router(contacts_routes)
 app.include_router(media_routes)
+app.include_router(chat_routes)
 
 
 # -------------------------------------------

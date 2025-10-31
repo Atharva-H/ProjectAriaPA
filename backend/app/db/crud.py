@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import logging
 
-from app.db.models import User
+from app.db.models import User, ChatMessage
 from app.core.logging_config import user_context
 
 logger = logging.getLogger("ProjectAria.CRUD")
@@ -285,3 +285,77 @@ async def refresh_google_access_token(refresh_token: str) -> dict:
     async with httpx.AsyncClient(timeout=10.0) as client:
         res = await client.post("https://oauth2.googleapis.com/token", data=data)
         return res.json()
+
+
+# ------------------------
+# 🧮 Tally Integration
+# ------------------------
+def update_tally_connection(db: Session, user: User, database_name: str, company_name: str = None, connected: bool = True):
+    """Update user's Tally connection details."""
+    user_context.set(user.email)
+    user.tally_database_name = database_name
+    user.tally_connected = connected
+    if company_name:
+        user.tally_company_name = company_name
+    db.commit()
+    db.refresh(user)
+    logger.info(f"🔗 Updated Tally connection for {user.email}: {database_name} (connected={connected})")
+    return user
+
+
+def disconnect_tally(db: Session, user: User):
+    """Disconnect user from Tally integration."""
+    user_context.set(user.email)
+    user.tally_database_name = None
+    user.tally_connected = False
+    user.tally_company_name = None
+    db.commit()
+    db.refresh(user)
+    logger.info(f"🔌 Disconnected Tally for {user.email}")
+    return user
+
+
+# ------------------------
+# 💬 Chat Message CRUD Operations
+# ------------------------
+
+def create_chat_message(db: Session, user_id: int, role: str, content: str, intent: str = None, message_type: str = None, metadata: dict = None):
+    """Create a new chat message."""
+    user_context.set(f"user_{user_id}")
+    chat_message = ChatMessage(
+        user_id=user_id,
+        role=role,
+        content=content,
+        intent=intent,
+        message_type=message_type,
+        message_metadata=metadata
+    )
+    db.add(chat_message)
+    db.commit()
+    db.refresh(chat_message)
+    logger.debug(f"Created chat message for user {user_id}: {role}")
+    return chat_message
+
+
+def get_chat_history(db: Session, user_id: int, limit: int = 50):
+    """Get recent chat history for a user."""
+    user_context.set(f"user_{user_id}")
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.user_id == user_id
+    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
+    
+    # Return in chronological order (oldest first)
+    messages.reverse()
+    logger.debug(f"Retrieved {len(messages)} chat messages for user {user_id}")
+    return messages
+
+
+def delete_chat_history(db: Session, user_id: int):
+    """Clear all chat history for a user."""
+    user_context.set(f"user_{user_id}")
+    deleted_count = db.query(ChatMessage).filter(
+        ChatMessage.user_id == user_id
+    ).delete()
+    db.commit()
+    logger.info(f"Deleted {deleted_count} chat messages for user {user_id}")
+    return deleted_count
