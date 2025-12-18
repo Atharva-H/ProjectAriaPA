@@ -60,3 +60,10 @@ def init_db():
     """
     from app.db import models  # Import models before creating tables
     Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

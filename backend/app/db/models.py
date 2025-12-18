@@ -87,6 +87,8 @@ class Task(Base):
     source = Column(String, nullable=True)  # gmail | mom | whatsapp | call
     link = Column(String, nullable=True)
     created_from = Column(String, nullable=True)  # message id / email id
+    is_urgent = Column(Boolean, default=False)
+    is_important = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

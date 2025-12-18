@@ -246,6 +246,69 @@ FUNCTIONS = [
     },
 
     # -------------------------------
+    # ✅ Task Management
+    # -------------------------------
+    {
+        "name": "create_task",
+        "description": "Create a new task or to-do item for the user. Use this when user says 'remind me to...', 'add task', 'create to-do'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "The main content or title of the task (e.g., 'Buy groceries', 'Call John')."
+                },
+                "due_date": {
+                    "type": "string",
+                    "description": "Optional due date/time in natural language (e.g., 'tomorrow 5pm', 'next Friday')."
+                },
+                "is_urgent": {
+                    "type": "boolean",
+                    "description": "True if the task implies urgency (e.g., 'ASAP', 'urgent', 'immediately', 'right now', 'today only', 'must do today'). Default False."
+                },
+                "is_important": {
+                    "type": "boolean",
+                    "description": "True if the task implies importance (e.g., 'critical', 'important', 'high priority', 'crucial', 'essential'). Default False."
+                }
+            },
+            "required": ["title"]
+        }
+    },
+    {
+        "name": "list_tasks",
+        "description": "List the user's pending or completed tasks. Use for 'show my tasks', 'what do I have to do', 'my to-do list'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "done", "all"],
+                    "description": "Filter by status (default: 'pending')."
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "complete_task",
+        "description": "Mark a task as completed. Use for 'I did X', 'mark X as done', 'finish task X'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "integer",
+                    "description": "The ID of the task to complete."
+                },
+                "title": {
+                    "type": "string",
+                    "description": "The title of the task to complete (if ID is not known)."
+                }
+            },
+            "required": []
+        }
+    },
+
+    # -------------------------------
     # 📊 Tally Integration
     # -------------------------------
     {

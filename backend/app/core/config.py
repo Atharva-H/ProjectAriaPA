@@ -22,6 +22,11 @@ class Settings:
     GOOGLE_GMAIL_REDIRECT_URI = os.getenv("GOOGLE_GMAIL_REDIRECT_URI")
     JWT_SECRET = os.getenv("JWT_SECRET")
     FRONTEND_URL = os.getenv("FRONTEND_URL")
+    CORS_ALLOW_ORIGINS = [
+        origin.strip()
+        for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
+        if origin.strip()
+    ]
 
     # -------------------------
     # 💬 Twilio Settings

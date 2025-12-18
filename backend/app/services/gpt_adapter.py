@@ -31,6 +31,13 @@ Calendar functions:
 - find_free_time: Check availability
 - cancel_calendar_event: Delete events
 
+Task functions:
+- create_task: For "to-do" items, "reminders" (without specific meeting time), "tasks". (e.g. "remind me to buy milk", "add task to call John")
+  - INFER `is_urgent=True` for: "ASAP", "today only", "must do", "urgent", "immediately".
+  - INFER `is_important=True` for: "critical", "important", "high priority", "essential".
+- list_tasks: Show pending/completed tasks
+- complete_task: Mark task as done
+
 Tally functions:
 - get_tally_ledger_balance: Outstanding/balance queries (PRIORITY for "outstanding"/"balance"/"amount due")
 - get_tally_ledger_list, get_tally_vouchers, get_tally_stock_items, get_tally_parties

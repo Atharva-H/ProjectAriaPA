@@ -518,6 +518,11 @@ async def _fetch_and_format_calendar(user, url: str) -> Tuple[Optional[list], st
 
         if res.status_code != 200:
             error_detail = res.json().get("error", {}).get("message", res.text)
+            
+            # If we tried to refresh and it failed (still 401), tell user to reconnect
+            if res.status_code == 401 and user and user.google_calendar_refresh:
+                 return None, "⚠️ Your Google Calendar connection has expired. Please go to the Integrations page and reconnect your calendar."
+
             logger.error(f"Google Calendar API error {res.status_code}: {error_detail}")
             return None, f"❌ Calendar API error {res.status_code}: {error_detail}"
 

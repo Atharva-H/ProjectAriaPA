@@ -245,12 +245,22 @@ def delete_contact(db: Session, contact_id: int, user: User) -> bool:
 # ------------------------
 # ✅ Tasks
 # ------------------------
-def create_task(db: Session, user: User, title: str, description: str = None, due_at: datetime = None, source: str = None, link: str = None, created_from: str = None) -> Task:
-    task = Task(user_id=user.id, title=title, description=description, due_at=due_at, source=source, link=link, created_from=created_from)
+def create_task(db: Session, user: User, title: str, description: str = None, due_at: datetime = None, source: str = None, link: str = None, created_from: str = None, is_urgent: bool = False, is_important: bool = False) -> Task:
+    task = Task(
+        user_id=user.id, 
+        title=title, 
+        description=description, 
+        due_at=due_at, 
+        source=source, 
+        link=link, 
+        created_from=created_from,
+        is_urgent=is_urgent,
+        is_important=is_important
+    )
     db.add(task)
     db.commit()
     db.refresh(task)
-    logger.info(f"📝 Task created for {user.email}: {title}")
+    logger.info(f"📝 Task created for {user.email}: {title} (Urgent={is_urgent}, Important={is_important})")
     return task
 
 def list_tasks(db: Session, user: User, status: str = None) -> list:
@@ -264,6 +274,20 @@ def complete_task(db: Session, user: User, task_id: int) -> Task:
     if not t:
         return None
     t.status = "done"
+    db.commit()
+    db.refresh(t)
+    return t
+
+
+def update_task(db: Session, user: User, task_id: int, **kwargs) -> Task:
+    t = db.query(Task).filter(Task.id == task_id, Task.user_id == user.id).first()
+    if not t:
+        return None
+    
+    for key, value in kwargs.items():
+        if hasattr(t, key) and value is not None:
+            setattr(t, key, value)
+            
     db.commit()
     db.refresh(t)
     return t
@@ -319,6 +343,8 @@ def disconnect_tally(db: Session, user: User):
 # 💬 Chat Message CRUD Operations
 # ------------------------
 
+from sqlalchemy import func, cast, Date
+
 def create_chat_message(db: Session, user_id: int, role: str, content: str, intent: str = None, message_type: str = None, metadata: dict = None):
     """Create a new chat message."""
     user_context.set(f"user_{user_id}")
@@ -337,17 +363,57 @@ def create_chat_message(db: Session, user_id: int, role: str, content: str, inte
     return chat_message
 
 
-def get_chat_history(db: Session, user_id: int, limit: int = 50):
-    """Get recent chat history for a user."""
+def get_chat_history(db: Session, user_id: int, limit: int = 50, date: str = None):
+    """Get recent chat history for a user, optionally filtered by date."""
     user_context.set(f"user_{user_id}")
-    messages = db.query(ChatMessage).filter(
-        ChatMessage.user_id == user_id
-    ).order_by(ChatMessage.created_at.desc()).limit(limit).all()
+    
+    query = db.query(ChatMessage).filter(ChatMessage.user_id == user_id)
+    
+    if date:
+        # Filter by specific date (YYYY-MM-DD)
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+            # Cast created_at to date for comparison
+            query = query.filter(cast(ChatMessage.created_at, Date) == target_date)
+            # When filtering by date, we usually want all messages for that day, 
+            # but we still keep a high limit to prevent massive payloads
+            limit = 1000 
+        except ValueError:
+            logger.warning(f"Invalid date format provided: {date}")
+    
+    messages = query.order_by(ChatMessage.created_at.desc()).limit(limit).all()
     
     # Return in chronological order (oldest first)
     messages.reverse()
     logger.debug(f"Retrieved {len(messages)} chat messages for user {user_id}")
     return messages
+
+
+def get_chat_dates(db: Session, user_id: int):
+    """Get list of dates with chat history."""
+    user_context.set(f"user_{user_id}")
+    
+    # Query distinct dates and count messages
+    # We cast created_at to Date to group by day
+    results = db.query(
+        cast(ChatMessage.created_at, Date).label('date'),
+        func.count(ChatMessage.id).label('count')
+    ).filter(
+        ChatMessage.user_id == user_id
+    ).group_by(
+        cast(ChatMessage.created_at, Date)
+    ).order_by(
+        cast(ChatMessage.created_at, Date).desc()
+    ).all()
+    
+    dates = []
+    for r in results:
+        dates.append({
+            "date": r.date.isoformat(),
+            "count": r.count
+        })
+        
+    return dates
 
 
 def delete_chat_history(db: Session, user_id: int):

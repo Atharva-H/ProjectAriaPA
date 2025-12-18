@@ -1,37 +1,40 @@
 // src/pages/Chat.jsx
 import { useState, useEffect, useRef } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import useWebSocket from '../hooks/useWebSocket';
 import chatService from '../services/chatService';
 import ReactMarkdown from 'react-markdown';
 import EventCard from '../components/EventCard';
+import TaskCard from '../components/TaskCard';
 import ConfirmationPrompt from '../components/ConfirmationPrompt';
 import LedgerList from '../components/LedgerList';
 import LedgerCard from '../components/LedgerCard';
-import { 
-  Send, 
-  Trash2, 
-  Wifi, 
-  WifiOff, 
+import {
+  Send,
   Loader2,
-  Bot,
-  User,
-  AlertCircle,
-  Calendar,
-  CalendarClock,
-  CalendarCheck,
-  Clock
+  Mic,
+  Square
 } from 'lucide-react';
 
 export default function Chat() {
   const { user, token } = useAuth();
+  const { selectedDate } = useOutletContext(); // Use context from DashboardLayout
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
+  const isRecordingRef = useRef(false);
+  const mimeTypeRef = useRef('audio/webm');
 
   // Handle WebSocket messages
   function handleWebSocketMessage(data) {
@@ -39,7 +42,7 @@ export default function Chat() {
       case 'history':
         setMessages(data.messages || []);
         break;
-      
+
       case 'message':
         setMessages(prev => [...prev, {
           id: Date.now() + Math.random(),
@@ -52,16 +55,16 @@ export default function Chat() {
         }]);
         setIsTyping(false);
         break;
-      
+
       case 'typing':
         setIsTyping(data.is_typing);
         break;
-      
+
       case 'error':
         setError(data.message);
         setIsTyping(false);
         break;
-      
+
       default:
         console.log('Unknown message type:', data.type);
     }
@@ -69,10 +72,8 @@ export default function Chat() {
 
   // WebSocket connection
   const wsUrl = token ? chatService.createWebSocketUrl(token) : null;
-  
+
   const {
-    connectionStatus,
-    lastMessage,
     error: wsError,
     sendMessage,
     isConnected
@@ -83,21 +84,6 @@ export default function Chat() {
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  // Utility function to format timestamps
-  const formatTimestamp = (timestamp) => {
-    try {
-      const date = new Date(timestamp);
-      return date.toLocaleTimeString([], { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    } catch (error) {
-      console.error('Error formatting timestamp:', error);
-      return 'Invalid time';
-    }
   };
 
   useEffect(() => {
@@ -111,15 +97,20 @@ export default function Chat() {
     }
   }, [wsError]);
 
-  // Load chat history on component mount
+  // Load chat history when selectedDate changes
   useEffect(() => {
     const loadChatHistory = async () => {
       if (!token) return;
-      
+
       try {
         setIsLoading(true);
-        const history = await chatService.getChatHistory();
-        setMessages(history.messages || []);
+        // If selectedDate is provided, we fetch history.
+        if (selectedDate) {
+          const history = await chatService.getChatHistory(50, selectedDate);
+          setMessages(history.messages || []);
+        } else {
+          setMessages([]);
+        }
       } catch (err) {
         console.error('Error loading chat history:', err);
         setError('Failed to load chat history');
@@ -129,11 +120,11 @@ export default function Chat() {
     };
 
     loadChatHistory();
-  }, [token]);
+  }, [token, selectedDate]);
+
 
   // Handle event card actions
   const handleEventAction = (action, event) => {
-    // For now, just send a text message about the action
     let message = '';
     switch (action) {
       case 'view':
@@ -148,48 +139,52 @@ export default function Chat() {
       default:
         return;
     }
-    
     setInputMessage(message);
     inputRef.current?.focus();
   };
 
+  // Handle task card actions
+  const handleTaskAction = (action, task) => {
+    let message = '';
+    switch (action) {
+      case 'mark_done':
+        message = `Mark task "${task.title}" as done`;
+        break;
+      default:
+        return;
+    }
+    // Optimistically update the UI or just send the message
+    // For now, we just send the message and expect the backend to confirm
+    setInputMessage(message);
+    inputRef.current?.focus();
+    // Alternatively, we could auto-send:
+    // sendMessage(message);
+  };
+
   // Handle confirmation prompt actions
   const handleConfirmation = (result) => {
-    // Send confirmation result back via WebSocket
     let message = '';
     if (result.action === 'choose_slot') {
-      // Option numbers start from 2 (since 1 is "Create anyway")
-      // Backend expects "2", "3", "4", etc. or "choose option 2", "option 3"
       const optionNumber = result.option || (result.slotIndex + 2);
-      message = `${optionNumber}`; // Simple number, backend will parse it
+      message = `${optionNumber}`;
     } else if (result.action === 'confirm_anyway') {
-      // Backend expects "1", "confirm", "yes", or "ok"
-      message = '1'; // Option 1 = Create anyway
+      message = '1';
     }
-    
-    const success = sendMessage(message);
-    if (!success) {
-      setError('Failed to send confirmation');
-    }
+    sendMessage(message);
   };
 
   const handleConfirmationCancel = () => {
-    const success = sendMessage('Cancel');
-    if (!success) {
-      setError('Failed to send cancellation');
-    }
+    sendMessage('Cancel');
   };
 
   // Handle sending messages
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    
     if (!inputMessage.trim() || !isConnected) return;
-    
+
     const messageText = inputMessage.trim();
     setInputMessage('');
-    
-    // Add user message to UI immediately
+
     const userMessage = {
       id: Date.now(),
       role: 'user',
@@ -197,406 +192,274 @@ export default function Chat() {
       timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, userMessage]);
-    
-    // Send via WebSocket
+
     const success = sendMessage(messageText);
     if (!success) {
       setError('Failed to send message');
     }
   };
 
-  // Handle clearing chat history
-  const handleClearChat = async () => {
-    if (!window.confirm('Are you sure you want to clear all chat history?')) {
-      return;
-    }
-    
+  // Handle audio recording
+  const startRecording = async () => {
+    if (isRecording || mediaRecorderRef.current) return;
+
     try {
-      await chatService.clearChatHistory();
-      setMessages([]);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 44100 }
+      });
+      mediaStreamRef.current = stream;
+
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const wasRecording = isRecordingRef.current;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach(track => track.stop());
+          mediaStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+
+        if (!wasRecording || audioChunksRef.current.length === 0) return;
+
+        const savedMimeType = mimeTypeRef.current;
+        const audioBlob = new Blob(audioChunksRef.current, { type: savedMimeType });
+
+        let extension = 'webm';
+        let finalMimeType = 'audio/webm';
+        if (savedMimeType.includes('mp4')) {
+          extension = 'm4a';
+          finalMimeType = 'audio/mp4';
+        }
+
+        const audioFile = new File([audioBlob], `recording.${extension}`, { type: finalMimeType });
+
+        setIsTranscribing(true);
+        try {
+          const transcript = await chatService.uploadAudio(audioFile);
+          if (transcript && transcript.trim()) {
+            setInputMessage(transcript);
+            inputRef.current?.focus();
+            setError(null);
+          }
+        } catch (err) {
+          console.error('Error transcribing audio:', err);
+          setError('Failed to transcribe audio.');
+        } finally {
+          setIsTranscribing(false);
+          audioChunksRef.current = [];
+        }
+      };
+
+      mimeTypeRef.current = mimeType;
+      mediaRecorder.start(1000);
+      isRecordingRef.current = true;
+      setIsRecording(true);
       setError(null);
     } catch (err) {
-      console.error('Error clearing chat history:', err);
-      setError('Failed to clear chat history');
+      console.error('Error starting recording:', err);
+      setError('Failed to access microphone.');
     }
   };
 
-  // Connection status indicator
-  const getConnectionStatus = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return { icon: Wifi, color: 'text-green-600', text: 'Connected' };
-      case 'connecting':
-        return { icon: Loader2, color: 'text-yellow-600', text: 'Connecting...' };
-      case 'error':
-        return { icon: WifiOff, color: 'text-red-600', text: 'Connection Error' };
-      default:
-        return { icon: WifiOff, color: 'text-gray-600', text: 'Disconnected' };
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
     }
   };
 
-  const connectionStatusInfo = getConnectionStatus();
-  const StatusIcon = connectionStatusInfo.icon;
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
-  // Quick action suggestions
-  const quickActions = [
-    { icon: Calendar, label: "Today's Schedule", message: "What's on my calendar today?" },
-    { icon: CalendarClock, label: "Next Meeting", message: "What's my next meeting?" },
-    { icon: Clock, label: "Free Time", message: "When am I free today?" },
-    { icon: CalendarCheck, label: "This Week", message: "Show me this week's schedule" }
-  ];
-
-  // Handle quick action click
-  const handleQuickAction = (message) => {
-    setInputMessage(message);
-    inputRef.current?.focus();
-  };
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="minimal-heading minimal-heading-lg mb-2">Authentication Required</h2>
-          <p className="minimal-text-secondary">Please log in to access the chat.</p>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
-    <div className="h-full bg-gray-50 flex flex-col max-h-screen">
-      <div className="flex-1 flex flex-col min-h-0">
-        {/* Header */}
-        <div className="mb-4 flex-shrink-0 px-6 pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center space-x-3 mb-2">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-lg sm:text-2xl font-bold text-gray-900">
-                    AI Assistant Chat
-                  </h1>
-                  <p className="text-gray-600 text-xs sm:text-sm hidden sm:block">
-                    Chat with your AI assistant for calendar, Tally, and other tasks
-                  </p>
-                </div>
+    <div className="flex flex-col h-full relative font-sans text-sm bg-white dark:bg-[#343541]">
+      {/* Chat Area */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative px-4">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full px-4 text-center">
+            <div className="bg-white dark:bg-white/10 p-4 rounded-full mb-6 shadow-sm">
+              {/* Logo or Icon */}
+              <div className="w-10 h-10 bg-[#10a37f] rounded-sm flex items-center justify-center">
+                <span className="text-white font-bold text-xl">A</span>
               </div>
             </div>
-            
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              {/* Connection Status */}
-              <div className="flex items-center space-x-2 px-2 py-1 sm:px-3 sm:py-2 bg-white rounded-lg border border-gray-200 shadow-sm">
-                <StatusIcon className={`w-4 h-4 ${connectionStatusInfo.color} ${
-                  connectionStatus === 'connecting' ? 'animate-spin' : ''
-                }`} />
-                <span className={`text-xs sm:text-sm font-medium ${connectionStatusInfo.color} hidden sm:inline`}>
-                  {connectionStatusInfo.text}
-                </span>
-              </div>
-              
-              {/* Clear Chat Button */}
-              <button
-                onClick={handleClearChat}
-                className="px-2 py-1 sm:px-4 sm:py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-1 sm:space-x-2 shadow-sm"
-                disabled={messages.length === 0}
-              >
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Clear Chat</span>
-              </button>
-            </div>
+            <h2 className="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-8">
+              How can I help you today?
+            </h2>
           </div>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl shadow-sm flex-shrink-0 mx-6">
-            <div className="flex items-center">
-              <AlertCircle className="w-5 h-5 text-red-600 mr-3 flex-shrink-0" />
-              <p className="text-red-700 font-medium">{error}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Chat Container */}
-        <div className="flex-1 bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden flex flex-col mx-6 mb-6 min-h-0 max-h-full">
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-6 max-h-[60vh]">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
-                  <p className="text-gray-600 font-medium">Loading chat history...</p>
-                </div>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Bot className="w-8 h-8 text-white" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Welcome to AI Chat</h3>
-                  <p className="text-gray-600 mb-4">Start a conversation with your AI assistant</p>
-                  
-                  {/* Quick Actions */}
-                  <div className="mt-6">
-                    <p className="text-xs text-gray-500 mb-3 font-medium">Quick Actions:</p>
-                    <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
-                      {quickActions.map((action, idx) => {
-                        const Icon = action.icon;
-                        return (
-                          <button
-                            key={idx}
-                            onClick={() => handleQuickAction(action.message)}
-                            className="group px-4 py-3 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 flex flex-col items-center space-y-1 text-center"
-                          >
-                            <Icon className="w-5 h-5 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                            <span className="text-xs font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
-                              {action.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="mt-6 text-sm text-gray-500">
-                    <p>Or try asking:</p>
-                    <ul className="mt-2 space-y-1">
-                      <li>• "What's on my calendar today?"</li>
-                      <li>• "Show my profile"</li>
-                      <li>• "Help me with Tally"</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              messages.map((message) => (
+        ) : (
+          <div className="flex flex-col pb-32 pt-6 gap-6 max-w-3xl mx-auto w-full">
+            {messages.map((message, index) => {
+              const isUser = message.role === 'user';
+              return (
                 <div
-                  key={message.id}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} mb-4 animate-fadeIn`}
-                  style={{
-                    animation: 'fadeIn 0.3s ease-in'
-                  }}
+                  key={message.id || index}
+                  className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div
-                    className={`max-w-xs lg:max-w-lg px-4 py-3 rounded-2xl shadow-sm ${
-                      message.role === 'user'
-                        ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white'
-                        : 'bg-white border border-gray-200 text-gray-900'
-                    }`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      {message.role === 'assistant' && (
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
-                          <Bot className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      {message.role === 'user' && (
-                        <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        {message.role === 'assistant' ? (
-                          <>
-                            {/* Render confirmation prompt if available */}
-                            {message.message_type === 'confirmation' && message.metadata && (
-                              <ConfirmationPrompt
-                                prompt={message.metadata}
-                                onConfirm={handleConfirmation}
-                                onCancel={handleConfirmationCancel}
-                              />
-                            )}
-                            
-                            {/* Render event card if available */}
-                            {message.message_type === 'event_card' && message.metadata?.event && (
-                              <EventCard
-                                event={message.metadata.event}
-                                onAction={handleEventAction}
-                              />
-                            )}
-                            
-                            {/* Render event list if available */}
-                            {message.message_type === 'event_list' && message.metadata?.events && (
-                              <div className="space-y-2">
-                                {message.metadata.events.map((event, idx) => (
-                                  <EventCard
-                                    key={idx}
-                                    event={event}
-                                    onAction={handleEventAction}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                            
-                            {/* Render ledger card (single ledger) if available */}
-                            {message.message_type === 'ledger_card' && message.metadata?.ledger && (
-                              <LedgerCard
-                                ledger={message.metadata.ledger}
-                                onAction={(ledger) => {
-                                  // When user clicks, could show more details or refresh
-                                  const ledgerName = ledger.name;
-                                  setInputMessage(`Show detailed balance for ${ledgerName}`);
-                                  inputRef.current?.focus();
-                                }}
-                              />
-                            )}
-                            
-                            {/* Render ledger list (multiple ledgers) if available */}
-                            {message.message_type === 'ledger_list' && message.metadata?.ledgers && (
-                              <LedgerList
-                                ledgers={message.metadata.ledgers}
-                                searchTerm={message.metadata.search_term || ''}
-                                onLedgerClick={(ledger) => {
-                                  // When user clicks on a ledger, ask for its balance
-                                  const ledgerName = ledger.name;
-                                  setInputMessage(`Show balance for ${ledgerName}`);
-                                  inputRef.current?.focus();
-                                }}
-                              />
-                            )}
-                            
-                            {/* Default markdown rendering for text - skip if structured component is present */}
-                            {!['confirmation', 'event_card', 'event_list', 'ledger_list', 'ledger_card'].includes(message.message_type) && (
-                              <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-strong:text-gray-900 prose-code:text-gray-800 prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200">
-                              <ReactMarkdown
-                              components={{
-                                a: ({ href, children }) => (
-                                  <a 
-                                    href={href} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:text-blue-800 underline decoration-2 underline-offset-2 hover:decoration-blue-800 transition-colors"
-                                  >
-                                    {children}
-                                  </a>
-                                ),
-                                code: ({ children, className }) => {
-                                  const isInline = !className;
-                                  return isInline ? (
-                                    <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-sm font-mono">
-                                      {children}
-                                    </code>
-                                  ) : (
-                                    <code className={className}>{children}</code>
-                                  );
-                                },
-                                ul: ({ children }) => (
-                                  <ul className="list-disc list-inside space-y-1 my-2">
-                                    {children}
-                                  </ul>
-                                ),
-                                ol: ({ children }) => (
-                                  <ol className="list-decimal list-inside space-y-1 my-2">
-                                    {children}
-                                  </ol>
-                                ),
-                                li: ({ children }) => (
-                                  <li className="text-gray-700">{children}</li>
-                                ),
-                                p: ({ children }) => (
-                                  <p className="text-gray-700 leading-relaxed my-2">{children}</p>
-                                ),
-                                strong: ({ children }) => (
-                                  <strong className="font-semibold text-gray-900">{children}</strong>
-                                ),
-                                em: ({ children }) => (
-                                  <em className="italic text-gray-600">{children}</em>
-                                ),
-                                blockquote: ({ children }) => (
-                                  <blockquote className="border-l-4 border-blue-200 pl-4 py-2 bg-blue-50 my-2 rounded-r">
-                                    {children}
-                                  </blockquote>
-                                ),
-                                h1: ({ children }) => (
-                                  <h1 className="text-lg font-bold text-gray-900 my-2">{children}</h1>
-                                ),
-                                h2: ({ children }) => (
-                                  <h2 className="text-base font-semibold text-gray-900 my-2">{children}</h2>
-                                ),
-                                h3: ({ children }) => (
-                                  <h3 className="text-sm font-semibold text-gray-900 my-2">{children}</h3>
-                                )
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                            </div>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-white leading-relaxed">{message.content}</p>
-                        )}
-                        <div className={`text-xs mt-2 flex items-center space-x-2 ${
-                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                  <div className={`flex max-w-[85%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {/* Avatar */}
+                    <div className="flex-shrink-0 flex flex-col justify-end">
+                      <div className={`w-8 h-8 rounded-sm flex items-center justify-center shadow-sm ${isUser ? 'bg-[#5436DA]' : 'bg-[#10a37f]'
                         }`}>
-                          <span>{formatTimestamp(message.timestamp)}</span>
-                          {message.intent && message.role === 'assistant' && (
-                            <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">
-                              {message.intent.replace('_', ' ')}
-                            </span>
-                          )}
-                        </div>
+                        {isUser ? (
+                          <span className="text-white text-xs">You</span>
+                        ) : (
+                          <span className="text-white text-xs">AI</span>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </div>
-              ))
-            )}
-            
-            {/* Typing Indicator */}
-            {isTyping && (
-              <div className="flex justify-start mb-4">
-                <div className="bg-white border border-gray-200 text-gray-900 px-4 py-3 rounded-2xl shadow-sm">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                      <Bot className="w-4 h-4 text-white" />
-                    </div>
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    </div>
-                    <span className="text-sm text-gray-500 ml-2">AI is typing...</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
-          </div>
 
-          {/* Input Area */}
-          <div className="border-t border-gray-200 p-4 bg-gray-50 flex-shrink-0">
-            <form onSubmit={handleSendMessage} className="flex space-x-3">
-              <div className="flex-1 relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder={isConnected ? "Type your message..." : "Connecting..."}
-                  disabled={!isConnected || isLoading}
-                  className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 transition-colors"
-                />
-                {isLoading && (
-                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                    {/* Content Bubble */}
+                    <div className={`relative px-5 py-3.5 shadow-sm ${isUser
+                        ? 'bg-[#10a37f] text-white rounded-2xl rounded-tr-sm'
+                        : 'bg-gray-100 dark:bg-[#444654] text-gray-800 dark:text-gray-100 rounded-2xl rounded-tl-sm'
+                      }`}>
+                      {isUser ? (
+                        <div className="whitespace-pre-wrap leading-relaxed">
+                          {message.content}
+                        </div>
+                      ) : (
+                        <div className="prose prose-slate dark:prose-invert max-w-none leading-relaxed">
+                          {/* Render specific message types */}
+                          {message.message_type === 'confirmation' && message.metadata ? (
+                            <ConfirmationPrompt
+                              prompt={message.metadata}
+                              onConfirm={handleConfirmation}
+                              onCancel={handleConfirmationCancel}
+                            />
+                          ) : message.message_type === 'event_card' && message.metadata?.event ? (
+                            <div className="mt-2">
+                              <EventCard event={message.metadata.event} onAction={handleEventAction} />
+                            </div>
+                          ) : message.message_type === 'event_list' && message.metadata?.events ? (
+                            <div className="space-y-3 mt-2">
+                              {message.metadata.events.map((event, idx) => (
+                                <EventCard key={idx} event={event} onAction={handleEventAction} />
+                              ))}
+                            </div>
+                          ) : message.message_type === 'task_card' && message.metadata?.task ? (
+                            <div className="mt-2">
+                              <TaskCard task={message.metadata.task} onAction={handleTaskAction} />
+                            </div>
+                          ) : message.message_type === 'ledger_card' && message.metadata?.ledger ? (
+                            <div className="mt-2">
+                              <LedgerCard ledger={message.metadata.ledger} onAction={() => { }} />
+                            </div>
+                          ) : message.message_type === 'ledger_list' && message.metadata?.ledgers ? (
+                            <div className="mt-2">
+                              <LedgerList ledgers={message.metadata.ledgers} searchTerm="" onLedgerClick={() => { }} />
+                            </div>
+                          ) : (
+                            <ReactMarkdown>{message.content}</ReactMarkdown>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                </div>
+              );
+            })}
+
+            {isTyping && (
+              <div className="flex w-full justify-start">
+                <div className="flex max-w-[85%] gap-3">
+                  <div className="flex-shrink-0 flex flex-col justify-end">
+                    <div className="w-8 h-8 bg-[#10a37f] rounded-sm flex items-center justify-center shadow-sm">
+                      <span className="text-white text-xs">AI</span>
+                    </div>
+                  </div>
+                  <div className="bg-gray-100 dark:bg-[#444654] px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm flex items-center">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse mr-1"></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse mr-1 delay-75"></span>
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150"></span>
+                  </div>
+                </div>
               </div>
-              <button
-                type="submit"
-                disabled={!isConnected || !inputMessage.trim() || isLoading}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl hover:from-blue-700 hover:to-blue-800 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2 shadow-sm"
-              >
-                <Send className="w-4 h-4" />
-                <span className="hidden sm:inline">Send</span>
-              </button>
-            </form>
+            )}
+            <div ref={messagesEndRef} className="h-4" />
+          </div>
+        )}
+      </div>
+
+      {/* Input Area */}
+      <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-white via-white to-transparent dark:from-[#343541] dark:via-[#343541] pt-10 pb-6">
+        <div className="max-w-3xl mx-auto px-4">
+          {error && (
+            <div className="mb-2 text-center text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-2 rounded-md border border-red-200 dark:border-red-800">
+              {error}
+            </div>
+          )}
+          <div className="relative flex items-center w-full p-3 bg-white dark:bg-[#40414f] border border-black/10 dark:border-gray-900/50 rounded-xl shadow-md dark:shadow-none overflow-hidden ring-offset-2 focus-within:ring-2 ring-blue-500/50">
+            {/* Recording Button */}
+            <button
+              type="button"
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`p-2 mr-2 rounded-md transition-colors ${isRecording
+                ? 'text-red-500 bg-red-50 dark:bg-red-900/20 animate-pulse'
+                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'
+                }`}
+              disabled={!isConnected || isLoading || isTranscribing}
+            >
+              {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+            </button>
+
+            <textarea
+              ref={inputRef}
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage(e);
+                }
+              }}
+              placeholder={isTranscribing ? "Transcribing..." : "Send a message..."}
+              className="flex-1 max-h-[200px] py-2 pr-2 bg-transparent border-none focus:ring-0 resize-none text-base text-gray-800 dark:text-gray-100 placeholder-gray-400 outline-none overflow-y-auto"
+              rows={1}
+              style={{ minHeight: '24px' }}
+              disabled={!isConnected || isLoading || isRecording || isTranscribing}
+            />
+
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputMessage.trim() || !isConnected || isLoading}
+              className={`p-2 rounded-md transition-colors ${inputMessage.trim()
+                ? 'bg-[#19c37d] text-white hover:bg-[#1a7f64]'
+                : 'text-gray-400 bg-transparent cursor-not-allowed'
+                }`}
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </div>
+          <div className="text-center mt-2">
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+              Free Research Preview. ChatGPT may produce inaccurate information about people, places, or facts.
+            </span>
           </div>
         </div>
       </div>

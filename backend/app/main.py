@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
+from app.core.config import settings
 from app.db.database import engine
 from app.db.models import Base
 from app.routes.auth_routes import router as auth_router
@@ -16,6 +17,7 @@ from app.routes.integrations.accounting.accounting_routes import router as accou
 from app.routes.contacts_routes import router as contacts_routes
 from app.routes.media_routes import router as media_routes
 from app.routes.chat_routes import router as chat_routes
+from app.routes.task_routes import router as task_routes
 
 
 
@@ -48,19 +50,7 @@ app = FastAPI(
 # -------------------------------------------
 # 🌍 CORS setup
 # -------------------------------------------
-origins = [
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",
-    "https://your-deployed-frontend-url.com",  # optional for production
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS setup moved below logging middleware
 
 # -------------------------------------------
 # 🧩 Logging Middleware (inject user_id)
@@ -102,6 +92,29 @@ async def add_user_context_to_logs(request: Request, call_next):
 
 
 # -------------------------------------------
+# 🌍 CORS setup (Must be outermost/last added)
+# -------------------------------------------
+# Production: Use specific origins from config
+# Development: Allow all origins via regex
+if settings.ENVIRONMENT == "production" and settings.CORS_ALLOW_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ALLOW_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # DEVELOPMENT MODE: Allow all origins via regex to support credentials
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# -------------------------------------------
 # 🧭 Include all routers
 # -------------------------------------------
 app.include_router(auth_router)
@@ -116,6 +129,7 @@ app.include_router(accounting_routes)
 app.include_router(contacts_routes)
 app.include_router(media_routes)
 app.include_router(chat_routes)
+app.include_router(task_routes)
 
 
 # -------------------------------------------

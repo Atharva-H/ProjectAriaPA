@@ -18,8 +18,148 @@ from app.services.ai_service import interpret_message
 from app.services.conversation_manager import add_user_message, add_assistant_message, get_recent_chat
 from app.db import crud
 
-# Import handlers
-from app.routes.whatsapp.handlers import calendar_handler, profile_handler, help_handler, tally_handler
+# Import services for handlers
+from app.services.accounting.tally_sql_service import TallySQLService
+from app.services.help_service import get_help_content
+
+# ... (rest of imports)
+
+# Remove broken import
+# from app.routes.whatsapp.handlers import calendar_handler, profile_handler, help_handler, tally_handler
+
+# ... (process_message function)
+
+async def handle_tally_intent(intent, params, user, db, response_callback=None):
+    """Handle Tally ERP related intents."""
+    try:
+        tally_service = TallySQLService()
+        
+        if not user.tally_connected:
+            response_content = "❌ Tally is not connected. Please connect Tally from your dashboard."
+            status = "error"
+        else:
+            # Map intents to service methods
+            result = {"success": False, "message": "Unknown Tally intent"}
+            
+            if intent == "get_tally_ledger_balance":
+                result = await tally_service.get_ledger_balance(
+                    database_name=user.tally_database_name or "ProjectAria", # Default or from user
+                    ledger_name=params.get("ledger_name")
+                )
+            elif intent == "get_tally_ledger_list":
+                result = await tally_service.get_ledgers(
+                    database_name=user.tally_database_name or "ProjectAria",
+                    filters={"search": params.get("search")}
+                )
+            elif intent == "get_tally_vouchers":
+                result = await tally_service.get_vouchers(
+                    database_name=user.tally_database_name or "ProjectAria",
+                    filters={
+                        "from_date": params.get("from_date"),
+                        "to_date": params.get("to_date"),
+                        "party_name": params.get("party_name")
+                    }
+                )
+            elif intent == "get_tally_stock_items":
+                result = await tally_service.get_stock_items(
+                    database_name=user.tally_database_name or "ProjectAria",
+                    filters={"search": params.get("search")}
+                )
+            elif intent == "get_tally_parties":
+                result = await tally_service.get_parties(
+                    database_name=user.tally_database_name or "ProjectAria",
+                    filters={"search": params.get("search")}
+                )
+            elif intent == "get_tally_sales":
+                result = await tally_service.get_sales(
+                    database_name=user.tally_database_name or "ProjectAria",
+                    party_name=params.get("party_name"),
+                    from_date=params.get("from_date"),
+                    to_date=params.get("to_date")
+                )
+            
+            if result.get("success"):
+                # Format the success response based on data
+                # This is a simplified formatting, ideally we'd have a formatter function
+                if "balances" in result:
+                    data = result["balances"]
+                    response_content = f"📊 *Ledger Balance*\n\n"
+                    for item in data:
+                        response_content += f"• {item.get('ledger')}: {item.get('closing_balance')}\n"
+                elif "ledgers" in result:
+                    data = result["ledgers"]
+                    response_content = f"📚 *Ledgers Found ({len(data)})*\n\n"
+                    for item in data[:10]: # Limit to 10
+                        response_content += f"• {item.get('name')}\n"
+                elif "total_sales" in result:
+                    response_content = f"💰 *Sales Report*\n\nParty: {result.get('party_name')}\nTotal Sales: {result.get('total_sales')}\nVouchers: {result.get('voucher_count')}"
+                else:
+                    # Generic success
+                    import json
+                    response_content = f"✅ Request successful.\n\n{json.dumps(result.get('data', {}), indent=2)}"
+                
+                status = "success"
+            else:
+                response_content = f"❌ {result.get('message', 'Operation failed')}"
+                status = "error"
+            
+    except Exception as e:
+        logger.error(f"Error handling Tally intent: {e}")
+        response_content = "❌ Error processing Tally request."
+        status = "error"
+        
+    response = {
+        "content": response_content,
+        "status": status,
+        "intent": intent,
+        "message_type": "text",
+        "metadata": None
+    }
+    
+    if response_callback:
+        await response_callback(response_content)
+        
+    return response
+
+async def handle_profile_intent(user, db, response_callback=None):
+    """Handle profile related intents."""
+    response_content = (
+        f"👤 *User Profile*\n\n"
+        f"**Name:** {user.name}\n"
+        f"**Email:** {user.email}\n"
+        f"**WhatsApp:** {user.whatsapp_no if user.whatsapp_no else 'Not linked'}\n"
+        f"**Tally:** {'Connected' if user.tally_connected else 'Not connected'}"
+    )
+    
+    response = {
+        "content": response_content,
+        "status": "success",
+        "intent": "get_user_profile",
+        "message_type": "text",
+        "metadata": None
+    }
+    
+    if response_callback:
+        await response_callback(response_content)
+        
+    return response
+
+async def handle_help_intent(db, response_callback=None):
+    """Handle help related intents."""
+    help_text = get_help_content()
+    
+    response = {
+        "content": help_text,
+        "status": "success",
+        "intent": "get_help",
+        "message_type": "text",
+        "metadata": None
+    }
+    
+    if response_callback:
+        await response_callback(help_text)
+        
+    return response
 
 logger = logging.getLogger("ProjectAria.ChatHandler")
 
@@ -37,10 +177,10 @@ async def process_message(
         user_id: ID of the user sending the message
         message: The user's message content
         db: Database session
-        response_callback: Optional callback to send response (for WebSocket)
+        response_callback: Optional callback to send response (kept for backward compatibility)
     
     Returns:
-        Dict with status and response content
+        Dict with status, content, message_type, and metadata
     """
     try:
         # Get user object
@@ -169,7 +309,7 @@ async def process_message(
                     crud.create_chat_message(db, user_id, "user", message, intent="confirmation")
                     crud.create_chat_message(db, user_id, "assistant", response_content, intent="create_calendar_event")
                     
-                    # Send response
+                    # Send response via callback if provided (for backward compatibility)
                     if response_callback:
                         await response_callback(response_content, message_type, metadata)
                     
@@ -178,11 +318,15 @@ async def process_message(
                         "status": "success",
                         "saved_to_db": True,
                         "message_type": message_type,
-                        "metadata": metadata
+                        "metadata": metadata,
+                        "intent": "confirmation"
                     }
         
         # Add user message to conversation history (if not already saved by confirmation handler)
         add_user_message(user_id, message)
+        
+        # Save user message to database
+        crud.create_chat_message(db, user_id, "user", message)
         
         # Process through AI service (no history to avoid confusion)
         ai_result = await interpret_message(message, None)
@@ -192,10 +336,15 @@ async def process_message(
         logger.info(f"AI interpreted message for user {user_id}: intent={intent}")
         
         # Route to appropriate handler based on intent
+        response = {}
         if intent.startswith("get_tally_") or intent.startswith("create_tally_"):
             # Handle Tally intents
             response = await handle_tally_intent(intent, params, user, db, response_callback)
             
+        elif intent in ["create_task", "list_tasks", "complete_task"]:
+            # Handle task intents
+            response = await handle_task_intent(intent, params, user, db, response_callback)
+
         elif (intent.startswith("get_") or intent.startswith("create_") or intent.startswith("reschedule_") or 
               intent.startswith("cancel_") or intent.startswith("find_") or intent in ["get_next_meeting", "get_weekly_meetings"]):
             # Handle calendar intents
@@ -216,7 +365,9 @@ async def process_message(
             response = {
                 "content": response_content,
                 "intent": "chat",
-                "status": "success"
+                "status": "success",
+                "message_type": "text",
+                "metadata": None
             }
             
             # Add assistant response to conversation
@@ -240,7 +391,9 @@ async def process_message(
             response = {
                 "content": response_content,
                 "intent": "unknown",
-                "status": "success"
+                "status": "success",
+                "message_type": "text",
+                "metadata": None
             }
             
             # Add assistant response to conversation
@@ -253,6 +406,14 @@ async def process_message(
             # Save to database
             crud.create_chat_message(db, user_id, "assistant", response_content, "unknown")
         
+        # Ensure response has all required fields
+        if "message_type" not in response:
+            response["message_type"] = "text"
+        if "metadata" not in response:
+            response["metadata"] = None
+        if "intent" not in response:
+            response["intent"] = intent
+            
         # Save assistant response to database if not already saved by handler
         if response.get("status") == "success" and response.get("content"):
             # Check if message was already saved by the handler
@@ -278,7 +439,9 @@ async def process_message(
         return {
             "content": error_response,
             "intent": "error",
-            "status": "error"
+            "status": "error",
+            "message_type": "text",
+            "metadata": None
         }
 
 
@@ -968,3 +1131,117 @@ async def handle_help_intent(db, response_callback=None):
         if response_callback:
             await response_callback(error_content)
         return {"content": error_content, "status": "error"}
+
+async def handle_task_intent(intent, params, user, db, response_callback=None):
+    """Handle task-related intents."""
+    try:
+        response_content = ""
+        message_type = "text"
+        metadata = None
+        
+        if intent == "create_task":
+            title = params.get("title")
+            due_date_str = params.get("due_date")
+            is_urgent = params.get("is_urgent", False)
+            is_important = params.get("is_important", False)
+            
+            due_at = None
+            if due_date_str:
+                # Parse due date
+                due_at = dateparser.parse(
+                    due_date_str,
+                    settings={
+                        "TIMEZONE": "Asia/Kolkata",
+                        "PREFER_DATES_FROM": "future",
+                        "DATE_ORDER": "DMY",
+                        "RELATIVE_BASE": datetime.now(pytz.timezone("Asia/Kolkata"))
+                    }
+                )
+            
+            task = crud.create_task(db, user, title, due_at=due_at, source="chat", created_from="ai", is_urgent=is_urgent, is_important=is_important)
+            
+            due_msg = f" due {due_at.strftime('%d %b %I:%M %p')}" if due_at else ""
+            response_content = f"✅ Added task: *{title}*{due_msg}"
+            message_type = "task_card"
+            metadata = {
+                "task": {
+                    "id": task.id,
+                    "title": task.title,
+                    "status": task.status,
+                    "due_at": task.due_at.isoformat() if task.due_at else None
+                }
+            }
+            
+        elif intent == "list_tasks":
+            status = params.get("status", "pending")
+            # Map 'all' to None for crud
+            status_filter = None if status == "all" else status
+            
+            tasks = crud.list_tasks(db, user, status=status_filter)
+            
+            if not tasks:
+                response_content = f"You have no {status} tasks."
+            else:
+                response_content = f"📋 *Your {status} tasks:*\n\n"
+                task_list = []
+                for t in tasks:
+                    icon = "✅" if t.status == "done" else "⬜"
+                    due = f" (Due: {t.due_at.strftime('%d %b')})" if t.due_at else ""
+                    response_content += f"{icon} {t.title}{due}\n"
+                    
+                    task_list.append({
+                        "id": t.id,
+                        "title": t.title,
+                        "status": t.status,
+                        "due_at": t.due_at.isoformat() if t.due_at else None
+                    })
+                
+                message_type = "task_list"
+                metadata = {"tasks": task_list}
+                
+        elif intent == "complete_task":
+            task_id = params.get("task_id")
+            title = params.get("title")
+            
+            task_to_complete = None
+            
+            if task_id:
+                # Try to find by ID
+                # Note: crud.complete_task takes ID, so we can just call it
+                task_to_complete = crud.complete_task(db, user, task_id)
+            elif title:
+                # Find by title
+                tasks = crud.list_tasks(db, user, status="pending")
+                for t in tasks:
+                    if title.lower() in t.title.lower():
+                        task_to_complete = crud.complete_task(db, user, t.id)
+                        break
+            
+            if task_to_complete:
+                response_content = f"✅ Marked task as done: *{task_to_complete.title}*"
+                message_type = "task_card"
+                metadata = {
+                    "task": {
+                        "id": task_to_complete.id,
+                        "title": task_to_complete.title,
+                        "status": "done",
+                        "due_at": task_to_complete.due_at.isoformat() if task_to_complete.due_at else None
+                    }
+                }
+            else:
+                response_content = f"❌ Could not find task to complete."
+        
+        # Send response
+        if response_callback:
+            await response_callback(response_content, message_type, metadata)
+            
+        return {
+            "content": response_content,
+            "status": "success",
+            "message_type": message_type,
+            "metadata": metadata
+        }
+        
+    except Exception as e:
+        logger.error(f"Error handling task intent: {e}")
+        return {"content": "❌ Error processing task request.", "status": "error"}

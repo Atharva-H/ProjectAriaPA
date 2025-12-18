@@ -198,21 +198,23 @@ async def chat_websocket(websocket: WebSocket):
                         break
                     
                     # Process message through AI
-                    async def send_response(content: str, message_type: str = "text", metadata: dict = None):
+                    # We no longer need a callback since process_message returns the response
+                    result = await process_message(user_id, user_message, db)
+                    
+                    # Send response if available
+                    if result.get("status") == "success" and result.get("content"):
+                        response_data = {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": result["content"],
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "message_type": result.get("message_type", "text"),
+                            "metadata": result.get("metadata")
+                        }
                         try:
-                            response_data = {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": content,
-                                "timestamp": datetime.utcnow().isoformat() + "Z",
-                                "message_type": message_type,
-                                "metadata": metadata
-                            }
                             await websocket.send_text(json.dumps(response_data))
                         except Exception as e:
                             logger.warning(f"Failed to send response: {e}")
-                    
-                    result = await process_message(user_id, user_message, db, send_response)
                     
                     # Send stop typing indicator
                     typing_data["is_typing"] = False
@@ -270,7 +272,8 @@ async def chat_websocket(websocket: WebSocket):
 
 @router.get("/chat/history")
 async def get_chat_history(
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
+    date: str = Query(None, description="Filter by date (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """Get chat history for the authenticated user."""
@@ -279,7 +282,7 @@ async def get_chat_history(
         # For now, we'll use a placeholder
         user_id = 1  # This should be extracted from JWT token
         
-        messages = crud.get_chat_history(db, user_id, limit)
+        messages = crud.get_chat_history(db, user_id, limit, date)
         
         return {
             "messages": [
@@ -300,6 +303,24 @@ async def get_chat_history(
     except Exception as e:
         logger.error(f"Error fetching chat history: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch chat history")
+
+
+@router.get("/chat/dates")
+async def get_chat_dates(db: Session = Depends(get_db)):
+    """Get list of dates with chat history."""
+    try:
+        user_id = 1  # This should be extracted from JWT token
+        
+        dates = crud.get_chat_dates(db, user_id)
+        
+        return {
+            "dates": dates,
+            "count": len(dates)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error fetching chat dates: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chat dates")
 
 
 @router.delete("/chat/history")

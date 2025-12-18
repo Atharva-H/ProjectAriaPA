@@ -26,7 +26,20 @@ export default function MinimalIntegration() {
   const [tallyModal, setTallyModal] = useState({ show: false, serverUrl: '', companyName: '' });
 
   useEffect(() => {
-    if (token) fetchIntegrationStatus();
+    if (token) {
+      fetchIntegrationStatus();
+      
+      // Check if we're returning from OAuth callback
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('connected')) {
+        // Remove the query parameter from URL
+        window.history.replaceState({}, '', '/integration');
+        // Refresh status after a short delay to ensure backend has updated
+        setTimeout(() => {
+          fetchIntegrationStatus();
+        }, 500);
+      }
+    }
   }, [token]);
 
   const fetchIntegrationStatus = async () => {
@@ -256,6 +269,26 @@ export default function MinimalIntegration() {
                             Connected{config.key === 'whatsapp' && integration.number ? ` (${integration.number})` : ''}
                           </span>
                         </div>
+                        {(config.key === 'google_calendar' || config.key === 'google_gmail') && (
+                          <button
+                            onClick={() => handleConnect(config.key)}
+                            disabled={isLoading}
+                            className="minimal-button minimal-button-secondary flex items-center space-x-2"
+                            title="Re-authenticate to refresh your token"
+                          >
+                            {isLoading ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <span>Syncing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="w-4 h-4" />
+                                <span>Sync Again</span>
+                              </>
+                            )}
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDisconnect(config.key)}
                           className="minimal-button minimal-button-secondary"
