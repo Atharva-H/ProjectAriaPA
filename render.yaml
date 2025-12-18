@@ -1,11 +1,11 @@
-services:
+databases:
   # PostgreSQL Database
-  - type: postgres
-    name: projectaria-db
+  - name: projectaria-db
     plan: free
     databaseName: projectaria
     user: projectaria_user
 
+services:
   # Backend API Service
   - type: web
     name: projectaria-backend
