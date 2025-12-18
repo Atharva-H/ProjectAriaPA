@@ -72,3 +72,14 @@ def sanitize_input(text: str) -> str:
     if not text:
         return ""
     return re.sub(r"[^\w\s@+.-]", "", text)
+
+def update_user_calendar_tokens(db, user, access, refresh, expires_in):
+    user.google_calendar_token = access
+    user.google_calendar_refresh = refresh
+    user.token_expiry = datetime.utcnow() + timedelta(seconds=expires_in)
+    db.commit()
+
+def update_user_gmail_tokens(db, user, access, refresh, expires_in):
+    user.google_gmail_token = access
+    user.google_gmail_refresh = refresh
+    db.commit()

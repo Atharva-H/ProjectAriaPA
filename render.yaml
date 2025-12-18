@@ -1,0 +1,66 @@
+databases:
+  # PostgreSQL Database
+  - name: projectaria-db
+    plan: free
+    databaseName: projectaria
+    user: projectaria_user
+
+services:
+  # Backend API Service
+  - type: web
+    name: projectaria-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && cd backend && alembic upgrade head
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: projectaria-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false  # Set this manually to your frontend URL
+      - key: CORS_ALLOW_ORIGINS
+        sync: false  # Set this manually to your frontend URL
+      - key: GOOGLE_CLIENT_ID
+        sync: false  # Set this manually
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false  # Set this manually
+      - key: GOOGLE_REDIRECT_URI
+        sync: false  # Set this manually
+      - key: GOOGLE_CALENDAR_REDIRECT_URI
+        sync: false  # Set this manually
+      - key: GOOGLE_GMAIL_REDIRECT_URI
+        sync: false  # Set this manually
+      - key: TWILIO_ACCOUNT_SID
+        sync: false  # Set this manually
+      - key: TWILIO_AUTH_TOKEN
+        sync: false  # Set this manually
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false  # Set this manually
+      - key: TWILIO_WEBHOOK_URL
+        sync: false  # Set this manually
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LOG_TO_FILE
+        value: false
+      - key: PYTHON_VERSION
+        value: 3.13.0
+
+  # Frontend Static Site
+  - type: web
+    name: projectaria-frontend
+    env: static
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false  # Set this manually to https://projectaria-backend.onrender.com (or your backend URL)
+

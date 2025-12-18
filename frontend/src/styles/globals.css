@@ -1,0 +1,100 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Minimal Design System - ChatGPT-inspired */
+:root {
+  /* Light Theme (Default) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9f9f9; /* Sidebar/Card bg */
+  --bg-tertiary: #ececec;  /* Hover states */
+  --text-primary: #0d0d0d;
+  --text-secondary: #666666;
+  --text-tertiary: #8e8e8e;
+  --border-light: #e5e5e5;
+  --border-medium: #d1d1d1;
+  
+  /* Accents */
+  --accent-primary: #10a37f; /* OpenAI Green-ish */
+  --accent-hover: #1a7f64;
+  
+  /* Status */
+  --success: #10a37f;
+  --warning: #f59e0b;
+  --error: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}
+
+/* Dark theme variables */
+.dark {
+  --bg-primary: #343541;        /* Main chat area */
+  --bg-secondary: #202123;      /* Sidebar */
+  --bg-tertiary: #40414f;       /* Message bubble / Input */
+  --text-primary: #ececf1;
+  --text-secondary: #c5c5d2;
+  --text-tertiary: #8e8ea0;
+  --border-light: #565869;
+  --border-medium: #6b6c7b;
+  --accent-primary: #19c37d;
+  --accent-hover: #1a7f64;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Söhne', 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(142, 142, 142, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 142, 142, 0.5);
+}
+
+/* Utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+

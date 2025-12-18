@@ -8,6 +8,10 @@ __pycache__/
 .env
 venv/
 .env.local
+.coverage
+htmlcov/
+.pytest_cache/
+*.dump
 
 # Node / JS
 node_modules/
@@ -21,6 +25,21 @@ dist/
 *.swp
 .DS_Store
 
+# Project specific
 GoogleCloudProject/
 backend/venv/
 frontend/node_modules/
+logs/
+*.log
+
+# Database files
+*.db
+*.sqlite3
+*.dump
+
+# Test files
+test_*.py
+*_test.py
+tests/
+
+mobile/

@@ -8,17 +8,19 @@ from dotenv import load_dotenv
 # ---------------------------------
 # 🔹 Load environment variables
 # ---------------------------------
-# Adjust this if your .env is in the project root:
-# load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
-load_dotenv()
+# Load .env from the backend directory
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
 
 # ---------------------------------
 # 🔹 Database URL (PostgreSQL)
 # ---------------------------------
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://postgres:12345678@192.168.1.176:5432/project_aria_pa"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL environment variable is required but not set. "
+        "Please set it in your .env file or environment variables."
+    )
 
 # ---------------------------------
 # 🔹 SQLAlchemy Engine
@@ -58,3 +60,10 @@ def init_db():
     """
     from app.db import models  # Import models before creating tables
     Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

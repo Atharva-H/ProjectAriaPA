@@ -1,3 +1,5 @@
+# app/routes/auth_routes.py
+
 import httpx
 import logging
 from fastapi import APIRouter, Depends, Header
@@ -16,28 +18,10 @@ logger = logging.getLogger("ProjectAria.Auth")
 
 # --- Step 1: Start OAuth login ---
 @router.get("/login")
-async def login(email: str = None, db: Session = Depends(get_db)):
-    """
-    Start Google OAuth flow.
-    If user is new → force consent screen.
-    If returning user → skip extra consent.
-    """
-    SCOPES = [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/calendar",
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar.readonly",
-    ]
+async def login():
+    """Start lightweight Google OAuth flow (only basic identity)."""
+    SCOPES = ["openid", "email", "profile"]
     scope_str = "%20".join(SCOPES)
-
-    # Check if user already exists in DB (skip consent for returning users)
-    prompt = "consent"
-    if email:
-        user = crud.get_user_by_email(db, email)
-        if user:
-            prompt = "select_account"  # or "none" to skip even account picker
 
     google_auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
@@ -45,12 +29,13 @@ async def login(email: str = None, db: Session = Depends(get_db)):
         f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
         "&response_type=code"
         "&access_type=offline"
-        f"&prompt={prompt}"
+        "&prompt=select_account"
         f"&scope={scope_str}"
     )
 
-    logger.info(f"Redirecting user to Google OAuth (prompt={prompt})")
+    logger.info("Redirecting user to Google OAuth (basic login)")
     return RedirectResponse(google_auth_url)
+
 
 
 
