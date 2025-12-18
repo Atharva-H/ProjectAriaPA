@@ -1,6 +1,6 @@
 services:
   # PostgreSQL Database
-  - type: pspg
+  - type: pg
     name: projectaria-db
     plan: free
     databaseName: projectaria
